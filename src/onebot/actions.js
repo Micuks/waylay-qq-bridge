@@ -1,0 +1,421 @@
+"use strict";
+
+const { oneBotToNt } = require("./message");
+
+/**
+ * OneBot v11 action handlers.
+ * Each handler takes (params, bridge, eventTranslator) and returns the response data.
+ */
+
+const handlers = {};
+
+// ---- Meta / Info ----
+
+handlers.get_login_info = async (params, bridge) => {
+  return {
+    user_id: Number(bridge.selfInfo.uin) || 0,
+    nickname: bridge.selfInfo.nickName || "",
+  };
+};
+
+handlers.get_version_info = async () => {
+  return {
+    app_name: "waylay",
+    app_version: "0.2.0",
+    protocol_version: "v11",
+    app_full_name: "waylay v0.2.0",
+  };
+};
+
+handlers.get_status = async (params, bridge) => {
+  return {
+    online: !!bridge.session,
+    good: !!bridge.session,
+  };
+};
+
+// ---- Friend / User ----
+
+handlers.get_friend_list = async (params, bridge) => {
+  if (!bridge.session) return [];
+  try {
+    const buddyService = bridge.session.getBuddyService();
+    const result = await buddyService.getBuddyList(true);
+    const friends = [];
+    if (result?.data) {
+      for (const category of result.data) {
+        for (const buddy of category.buddyList || []) {
+          friends.push({
+            user_id: Number(buddy.uin) || 0,
+            nickname: buddy.nick || buddy.remark || "",
+            remark: buddy.remark || "",
+          });
+        }
+      }
+    }
+    return friends;
+  } catch (e) {
+    console.error("[onebot-actions] get_friend_list error:", e.message);
+    return [];
+  }
+};
+
+handlers.get_stranger_info = async (params, bridge) => {
+  const userId = String(params.user_id || "");
+  if (!bridge.session) return { user_id: Number(userId), nickname: "", sex: "unknown", age: 0 };
+  try {
+    const profileService = bridge.session.getProfileService();
+    const uids = await bridge.session.getUidByUin("FriendsServiceImpl", [userId]);
+    const uid = uids?.uidInfo?.get(userId) || "";
+    if (uid) {
+      const profiles = await profileService.getUserSimpleInfo(false, [uid]);
+      const profile = profiles?.profileMap?.get(uid) || profiles?.get?.(uid);
+      if (profile) {
+        return {
+          user_id: Number(userId),
+          nickname: profile.nick || profile.nickName || "",
+          sex: "unknown",
+          age: 0,
+        };
+      }
+    }
+  } catch {}
+  return { user_id: Number(userId), nickname: "", sex: "unknown", age: 0 };
+};
+
+// ---- Group ----
+
+handlers.get_group_list = async (params, bridge) => {
+  if (!bridge.session) return [];
+  try {
+    const groupService = bridge.session.getGroupService();
+    const result = await groupService.getGroupList(true);
+    const groups = [];
+    if (result?.groupList) {
+      for (const g of result.groupList) {
+        groups.push({
+          group_id: Number(g.groupCode) || 0,
+          group_name: g.groupName || "",
+          member_count: g.memberCount || 0,
+          max_member_count: g.maxMember || 0,
+        });
+      }
+    }
+    return groups;
+  } catch (e) {
+    console.error("[onebot-actions] get_group_list error:", e.message);
+    return [];
+  }
+};
+
+handlers.get_group_info = async (params, bridge) => {
+  const groupId = String(params.group_id || "");
+  if (!bridge.session) return { group_id: Number(groupId), group_name: "", member_count: 0, max_member_count: 0 };
+  try {
+    const groupService = bridge.session.getGroupService();
+    const result = await groupService.getGroupList(false);
+    const g = result?.groupList?.find((g) => g.groupCode === groupId);
+    if (g) {
+      return {
+        group_id: Number(g.groupCode),
+        group_name: g.groupName || "",
+        member_count: g.memberCount || 0,
+        max_member_count: g.maxMember || 0,
+      };
+    }
+  } catch {}
+  return { group_id: Number(groupId), group_name: "", member_count: 0, max_member_count: 0 };
+};
+
+handlers.get_group_member_list = async (params, bridge) => {
+  const groupId = String(params.group_id || "");
+  if (!bridge.session) return [];
+  try {
+    const groupService = bridge.session.getGroupService();
+    const result = await groupService.getGroupMemberList(groupId, true);
+    const members = [];
+    const memberMap = result?.result?.infos || result?.infos;
+    if (memberMap) {
+      const entries = memberMap instanceof Map ? memberMap.entries() : Object.entries(memberMap);
+      for (const [, m] of entries) {
+        members.push(formatMember(m, groupId));
+      }
+    }
+    return members;
+  } catch (e) {
+    console.error("[onebot-actions] get_group_member_list error:", e.message);
+    return [];
+  }
+};
+
+handlers.get_group_member_info = async (params, bridge) => {
+  const groupId = String(params.group_id || "");
+  const userId = String(params.user_id || "");
+  if (!bridge.session) return formatMember({}, groupId);
+  try {
+    const groupService = bridge.session.getGroupService();
+    const result = await groupService.getGroupMemberList(groupId, false);
+    const memberMap = result?.result?.infos || result?.infos;
+    if (memberMap) {
+      const entries = memberMap instanceof Map ? memberMap.entries() : Object.entries(memberMap);
+      for (const [, m] of entries) {
+        if (String(m.uin) === userId) return formatMember(m, groupId);
+      }
+    }
+  } catch {}
+  return formatMember({ uin: userId }, groupId);
+};
+
+function formatMember(m, groupId) {
+  const role = m.role === 4 ? "owner" : m.role === 3 ? "admin" : "member";
+  return {
+    group_id: Number(groupId) || 0,
+    user_id: Number(m.uin) || 0,
+    nickname: m.nick || "",
+    card: m.cardName || "",
+    sex: "unknown",
+    age: 0,
+    area: "",
+    join_time: Number(m.joinTime) || 0,
+    last_sent_time: Number(m.lastSpeakTime) || 0,
+    level: String(m.memberLevel || "0"),
+    role,
+    unfriendly: false,
+    title: m.specialTitle || "",
+    title_expire_time: 0,
+    card_changeable: false,
+    shut_up_timestamp: Number(m.shutUpTime) || 0,
+  };
+}
+
+// ---- Messages ----
+
+handlers.send_msg = async (params, bridge, eventTranslator) => {
+  const messageType = params.message_type || (params.group_id ? "group" : "private");
+  if (messageType === "group") {
+    return handlers.send_group_msg(params, bridge, eventTranslator);
+  }
+  return handlers.send_private_msg(params, bridge, eventTranslator);
+};
+
+handlers.send_group_msg = async (params, bridge, eventTranslator) => {
+  const groupId = String(params.group_id || "");
+  const peer = { chatType: 2, peerUid: groupId, guildId: "" };
+  return await sendMessage(peer, params.message, bridge, eventTranslator);
+};
+
+handlers.send_private_msg = async (params, bridge, eventTranslator) => {
+  const userId = String(params.user_id || "");
+  // Need to convert UIN to UID for NT API
+  let peerUid = userId;
+  try {
+    const result = await bridge.session.getUidByUin("FriendsServiceImpl", [userId]);
+    peerUid = result?.uidInfo?.get(userId) || userId;
+  } catch {}
+  const peer = { chatType: 1, peerUid, guildId: "" };
+  return await sendMessage(peer, params.message, bridge, eventTranslator);
+};
+
+async function sendMessage(peer, message, bridge, eventTranslator) {
+  if (!bridge.session) throw new Error("Session not ready");
+  const elements = oneBotToNt(message);
+  if (!elements.length) throw new Error("Empty message");
+
+  try {
+    const msgService = bridge.session.getMsgService();
+    const result = await msgService.sendMsg("0", peer, elements, new Map());
+    const msgId = result?.msgId || result?.result?.msgId || "0";
+    const shortId = eventTranslator.createShortId(msgId);
+    return { message_id: shortId };
+  } catch (e) {
+    console.error("[onebot-actions] sendMessage error:", e.message);
+    throw e;
+  }
+}
+
+handlers.delete_msg = async (params, bridge, eventTranslator) => {
+  const shortId = Number(params.message_id);
+  const msgId = eventTranslator.resolveShortId(shortId);
+  if (!msgId || !bridge.session) return null;
+
+  // Need to find the message to get peer info
+  const cached = eventTranslator.getCachedMsg(shortId);
+  if (cached) {
+    const peer = cached.group_id
+      ? { chatType: 2, peerUid: String(cached.group_id), guildId: "" }
+      : { chatType: 1, peerUid: String(cached.user_id), guildId: "" };
+    try {
+      await bridge.session.getMsgService().recallMsg(peer, [msgId]);
+    } catch (e) {
+      console.error("[onebot-actions] delete_msg error:", e.message);
+    }
+  }
+  return null;
+};
+
+handlers.get_msg = async (params, bridge, eventTranslator) => {
+  const shortId = Number(params.message_id);
+  const cached = eventTranslator.getCachedMsg(shortId);
+  if (cached) {
+    return {
+      message_id: shortId,
+      real_id: shortId,
+      sender: cached.sender,
+      time: cached.time,
+      message: cached.message,
+      raw_message: cached.raw_message,
+    };
+  }
+  return null;
+};
+
+// ---- Forward messages ----
+
+handlers.send_group_forward_msg = async (params, bridge, eventTranslator) => {
+  // Forward messages require creating a multi-forward message
+  // This is complex and requires NT API's multiForwardMsg
+  // For now, send each node as a separate message as a fallback
+  const groupId = String(params.group_id || "");
+  const messages = params.messages || [];
+  const peer = { chatType: 2, peerUid: groupId, guildId: "" };
+
+  for (const node of messages) {
+    if (node.type !== "node" || !node.data?.content) continue;
+    try {
+      const elements = oneBotToNt(node.data.content);
+      if (elements.length) {
+        await bridge.session.getMsgService().sendMsg("0", peer, elements, new Map());
+      }
+    } catch (e) {
+      console.error("[onebot-actions] send_group_forward_msg node error:", e.message);
+    }
+  }
+  return { message_id: 0 };
+};
+
+handlers.send_private_forward_msg = async (params, bridge, eventTranslator) => {
+  const userId = String(params.user_id || "");
+  let peerUid = userId;
+  try {
+    const result = await bridge.session.getUidByUin("FriendsServiceImpl", [userId]);
+    peerUid = result?.uidInfo?.get(userId) || userId;
+  } catch {}
+  const peer = { chatType: 1, peerUid, guildId: "" };
+  const messages = params.messages || [];
+
+  for (const node of messages) {
+    if (node.type !== "node" || !node.data?.content) continue;
+    try {
+      const elements = oneBotToNt(node.data.content);
+      if (elements.length) {
+        await bridge.session.getMsgService().sendMsg("0", peer, elements, new Map());
+      }
+    } catch {}
+  }
+  return { message_id: 0 };
+};
+
+handlers.get_forward_msg = async (params, bridge) => {
+  // Would need to fetch multi-forward message content
+  return { messages: [] };
+};
+
+// ---- Group admin operations ----
+
+handlers.set_group_ban = async (params, bridge) => {
+  if (!bridge.session) return null;
+  try {
+    bridge.session.getGroupService().setMemberShutUp(
+      String(params.group_id), [{ uid: String(params.user_id), timeStamp: params.duration || 0 }]
+    );
+  } catch {}
+  return null;
+};
+
+handlers.set_group_whole_ban = async (params, bridge) => {
+  if (!bridge.session) return null;
+  try {
+    bridge.session.getGroupService().setGroupShutUp(String(params.group_id), params.enable !== false);
+  } catch {}
+  return null;
+};
+
+handlers.set_group_kick = async (params, bridge) => {
+  if (!bridge.session) return null;
+  try {
+    bridge.session.getGroupService().kickMember(
+      String(params.group_id), [String(params.user_id)], params.reject_add_request || false
+    );
+  } catch {}
+  return null;
+};
+
+handlers.set_group_admin = async (params, bridge) => {
+  if (!bridge.session) return null;
+  try {
+    bridge.session.getGroupService().setMemberRole(
+      String(params.group_id), String(params.user_id), params.enable ? 3 : 2
+    );
+  } catch {}
+  return null;
+};
+
+handlers.set_group_card = async (params, bridge) => {
+  if (!bridge.session) return null;
+  try {
+    bridge.session.getGroupService().modifyMemberCardName(
+      String(params.group_id), String(params.user_id), params.card || ""
+    );
+  } catch {}
+  return null;
+};
+
+handlers.set_group_name = async (params, bridge) => {
+  if (!bridge.session) return null;
+  try {
+    bridge.session.getGroupService().modifyGroupName(String(params.group_id), params.group_name || "");
+  } catch {}
+  return null;
+};
+
+handlers.set_group_leave = async (params, bridge) => {
+  if (!bridge.session) return null;
+  try {
+    bridge.session.getGroupService().quitGroup(String(params.group_id));
+  } catch {}
+  return null;
+};
+
+// ---- Stubs for APIs that Yunzai calls but we can gracefully fail ----
+
+handlers._set_model_show = async () => null;
+handlers.get_guild_service_profile = async () => { throw new Error("not supported"); };
+handlers.get_online_clients = async () => ({ clients: [] });
+handlers.get_cookies = async () => ({ cookies: "" });
+handlers.get_csrf_token = async () => ({ token: 0 });
+handlers.get_guild_list = async () => [];
+handlers.set_qq_profile = async () => null;
+handlers.set_qq_avatar = async () => null;
+handlers.send_like = async () => null;
+handlers.set_group_special_title = async () => null;
+handlers.send_group_sign = async () => null;
+handlers.download_file = async () => ({ file: "" });
+handlers.get_group_honor_info = async () => ({});
+handlers.get_essence_msg_list = async () => ({ msg_list: [] });
+handlers.set_essence_msg = async () => null;
+handlers.delete_essence_msg = async () => null;
+handlers.get_group_file_system_info = async () => ({});
+handlers.get_group_root_files = async () => ({ files: [], folders: [] });
+handlers.get_group_files_by_folder = async () => ({ files: [], folders: [] });
+handlers.get_group_file_url = async () => ({ url: "" });
+handlers.upload_group_file = async () => null;
+handlers.upload_private_file = async () => null;
+handlers.delete_group_file = async () => null;
+handlers.create_group_file_folder = async () => null;
+handlers.set_friend_add_request = async () => null;
+handlers.set_group_add_request = async () => null;
+handlers.delete_friend = async () => null;
+handlers.get_friend_msg_history = async () => ({ messages: [] });
+handlers.get_group_msg_history = async () => ({ messages: [] });
+
+module.exports = { handlers };
