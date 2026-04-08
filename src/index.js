@@ -2,6 +2,7 @@
 
 const { Bridge } = require("./bridge");
 const { BridgeServer } = require("./server");
+const { OneBotAdapter } = require("./onebot/adapter");
 
 // --- Parse CLI arguments and environment ---
 
@@ -11,6 +12,12 @@ function parseConfig() {
     host: process.env.BRIDGE_HOST || "0.0.0.0",
     quickLoginQQ: process.env.AUTO_LOGIN_QQ || "",
     qqResourceAppDir: process.env.QQ_APP_DIR || "/opt/QQ/resources/app",
+
+    // OneBot v11 config
+    onebotWsPort: parseInt(process.env.ONEBOT_WS_PORT || "0"),
+    onebotWsHost: process.env.ONEBOT_WS_HOST || "0.0.0.0",
+    onebotWsReverseUrls: parseJsonArray(process.env.ONEBOT_WS_REVERSE_URLS || ""),
+    onebotToken: process.env.ONEBOT_TOKEN || "",
   };
 
   for (const arg of process.argv) {
@@ -18,26 +25,59 @@ function parseConfig() {
     if (arg.startsWith("--host=")) config.host = arg.split("=")[1];
     if (arg.startsWith("--qq-app-dir=")) config.qqResourceAppDir = arg.split("=")[1];
     if (arg.startsWith("--quick-login=")) config.quickLoginQQ = arg.split("=")[1];
+    if (arg.startsWith("--onebot-ws-port=")) config.onebotWsPort = parseInt(arg.split("=")[1]);
+    if (arg.startsWith("--onebot-ws-reverse=")) {
+      config.onebotWsReverseUrls = parseJsonArray(arg.split("=").slice(1).join("="));
+    }
+    if (arg.startsWith("--onebot-token=")) config.onebotToken = arg.split("=")[1];
   }
 
   return config;
 }
 
-// Expose parseConfig for use by electron-entry or direct invocation
+function parseJsonArray(str) {
+  if (!str) return [];
+  try {
+    const parsed = JSON.parse(str);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return str.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+}
+
 module.exports = { parseConfig };
 
 async function main() {
   const config = parseConfig();
 
-  console.log("=== qq-bridge v0.1.0 ===");
+  console.log("=== waylay v0.2.0 ===");
   console.log(`[main] Config:`, JSON.stringify(config, null, 2));
 
   const bridge = new Bridge(config);
+
+  // PMHQ-compatible server (for LLOneBot backward compat)
   const server = new BridgeServer(config.port, config.host, bridge);
   bridge.setServer(server);
 
-  // Start WebSocket/HTTP server first so LLOneBot can connect
+  // OneBot v11 adapter (for Yunzai / other frameworks)
+  const hasOneBot = config.onebotWsPort || config.onebotWsReverseUrls.length;
+  let onebotAdapter = null;
+  if (hasOneBot) {
+    onebotAdapter = new OneBotAdapter(
+      {
+        wsPort: config.onebotWsPort,
+        wsHost: config.onebotWsHost,
+        wsReverseUrls: config.onebotWsReverseUrls,
+        token: config.onebotToken,
+      },
+      bridge
+    );
+    bridge.setOneBotAdapter(onebotAdapter);
+  }
+
+  // Start servers
   await server.start();
+  if (onebotAdapter) await onebotAdapter.start();
 
   // Then initialize NTQQ
   await bridge.init();

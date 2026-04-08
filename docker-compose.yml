@@ -7,10 +7,19 @@ services:
     privileged: true
     ports:
       - "13000:13000"
+      - "3001:3001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - BRIDGE_PORT=13000
       - BRIDGE_HOST=0.0.0.0
       - AUTO_LOGIN_QQ=1732167820
+      # OneBot v11: forward WS server on port 3001
+      - ONEBOT_WS_PORT=3001
+      - ONEBOT_WS_HOST=0.0.0.0
+      # OneBot v11: reverse WS to TRSS-Yunzai
+      - ONEBOT_WS_REVERSE_URLS=["ws://host.docker.internal:2536/OneBotv11"]
+      - ONEBOT_TOKEN=
     networks:
       app_network:
         aliases:

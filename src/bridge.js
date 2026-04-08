@@ -19,6 +19,7 @@ class Bridge {
     this.loginService = null;
     this.selfInfo = { uin: "", uid: "", nickName: "" };
     this.server = null; // set externally after construction
+    this.onebotAdapter = null; // set externally after construction
 
     this.appDir = config.qqResourceAppDir || "/opt/QQ/resources/app";
     this.packageJSON = JSON.parse(
@@ -31,11 +32,19 @@ class Bridge {
     this.server = server;
   }
 
+  /** Set the OneBotAdapter instance for pushing events */
+  setOneBotAdapter(adapter) {
+    this.onebotAdapter = adapter;
+  }
+
   // --- Event handler ---
 
   _onEvent(event) {
     if (this.server) {
       this.server.pushEvent(event.listenerName, event.eventName, event.data);
+    }
+    if (this.onebotAdapter) {
+      this.onebotAdapter.pushEvent(event.listenerName, event.eventName, event.data);
     }
   }
 
@@ -108,6 +117,7 @@ class Bridge {
             this.selfInfo.uin = data.uin;
             this.selfInfo.uid = data.uid;
             this._initSession(data.uin, data.uid);
+            if (this.onebotAdapter) this.onebotAdapter.notifyLogin();
           },
           onLoginFailed: (...args) => {
             console.error("[bridge] Login failed:", args);
