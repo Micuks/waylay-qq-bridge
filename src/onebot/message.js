@@ -397,6 +397,38 @@ function convertSegment(seg, uidResolver) {
         },
       };
 
+    case "music": {
+      const d = seg.data || {};
+      if (d.type === "custom") {
+        const ark = {
+          app: "com.tencent.structmsg",
+          desc: "音乐",
+          view: "music",
+          ver: "0.0.0.1",
+          prompt: d.title || "音乐分享",
+          meta: {
+            music: {
+              action: "", android_pkg_name: "", app_type: 1, appid: 100497308,
+              desc: d.content || "", jumpUrl: d.url || "", musicUrl: d.audio || "",
+              preview: d.image || "", sourceMsgId: "0", source_icon: "",
+              source_url: "", tag: "音乐分享", title: d.title || "",
+            },
+          },
+        };
+        return {
+          elementType: 10,
+          elementId: "",
+          arkElement: { bytesData: JSON.stringify(ark), linkInfo: null, subElementType: null },
+        };
+      }
+      // QQ/163 music by ID not yet supported
+      return null;
+    }
+
+    case "poke":
+      // Poke is handled at the action level, not as a message element
+      return null;
+
     default:
       return null;
   }

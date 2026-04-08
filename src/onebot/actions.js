@@ -550,10 +550,123 @@ handlers.upload_group_file = async () => null;
 handlers.upload_private_file = async () => null;
 handlers.delete_group_file = async () => null;
 handlers.create_group_file_folder = async () => null;
-handlers.set_friend_add_request = async () => null;
-handlers.set_group_add_request = async () => null;
+handlers.set_friend_add_request = async (params, bridge) => {
+  if (!bridge.session) return null;
+  const flag = String(params.flag || "");
+  const approve = params.approve !== false;
+  try {
+    const buddyService = bridge.session.getBuddyService();
+    if (typeof buddyService.approveOrRejectFriendRequest === "function") {
+      await buddyService.approveOrRejectFriendRequest(flag, approve);
+    } else if (typeof buddyService.handleFriendRequest === "function") {
+      await buddyService.handleFriendRequest(flag, approve);
+    }
+  } catch (e) {
+    console.error("[onebot-actions] set_friend_add_request error:", e.message);
+  }
+  return null;
+};
+
+handlers.set_group_add_request = async (params, bridge) => {
+  if (!bridge.session) return null;
+  const flag = String(params.flag || "");
+  const approve = params.approve !== false;
+  const reason = params.reason || "";
+  const [seq, groupCode, type] = flag.split("|");
+  if (!seq || !groupCode) return null;
+  try {
+    const groupService = bridge.session.getGroupService();
+    // Try common method names across NTQQ versions
+    if (typeof groupService.operateGroupReqNotify === "function") {
+      await groupService.operateGroupReqNotify(approve ? 1 : 2, { groupCode, seq, type: Number(type) || 1 }, reason);
+    } else if (typeof groupService.operateGroupNotify === "function") {
+      await groupService.operateGroupNotify(approve ? 1 : 2, { groupCode, seq, type: Number(type) || 1 }, reason);
+    } else if (typeof groupService.handleGroupRequest === "function") {
+      await groupService.handleGroupRequest(groupCode, seq, approve, reason);
+    }
+  } catch (e) {
+    console.error("[onebot-actions] set_group_add_request error:", e.message);
+  }
+  return null;
+};
+
 handlers.delete_friend = async () => null;
 handlers.get_friend_msg_history = async () => ({ messages: [] });
 handlers.get_group_msg_history = async () => ({ messages: [] });
+
+handlers.can_send_image = async () => ({ yes: true });
+handlers.can_send_record = async () => ({ yes: true });
+
+handlers.get_image = async (params, bridge) => {
+  const file = params.file || "";
+  if (!bridge.session) return { file: "" };
+  try {
+    const pathInfo = {
+      md5HexStr: "", fileName: file, elementType: 2, elementSubType: 0,
+      thumbSize: 0, needCreate: false, downloadType: 1, file_uuid: "",
+    };
+    const filePath = bridge.session.getMsgService().getRichMediaFilePathForGuild(pathInfo);
+    if (filePath && fs.existsSync(filePath)) {
+      return { file: filePath, file_size: fs.statSync(filePath).size, filename: file };
+    }
+  } catch {}
+  return { file: "" };
+};
+
+handlers.get_record = async (params, bridge) => {
+  const file = params.file || "";
+  if (!bridge.session) return { file: "" };
+  try {
+    const pathInfo = {
+      md5HexStr: "", fileName: file, elementType: 4, elementSubType: 0,
+      thumbSize: 0, needCreate: false, downloadType: 1, file_uuid: "",
+    };
+    const filePath = bridge.session.getMsgService().getRichMediaFilePathForGuild(pathInfo);
+    if (filePath && fs.existsSync(filePath)) {
+      return { file: filePath, file_size: fs.statSync(filePath).size, filename: file };
+    }
+  } catch {}
+  return { file: "" };
+};
+
+handlers.group_poke = async (params, bridge, eventTranslator) => {
+  if (!bridge.session) return null;
+  const groupId = String(params.group_id || "");
+  const userId = String(params.user_id || "");
+  let uid = eventTranslator.getUidByUin(userId);
+  if (!uid) {
+    try {
+      const r = await bridge.session.getProfileService().getUidByUin("FriendsServiceImpl", [userId]);
+      uid = r?.uidInfo?.get(userId);
+    } catch {}
+  }
+  if (!uid) uid = userId;
+  try {
+    const groupService = bridge.session.getGroupService();
+    if (typeof groupService.sendPoke === "function") {
+      await groupService.sendPoke(groupId, uid);
+    }
+  } catch (e) {
+    console.error("[onebot-actions] group_poke error:", e.message);
+  }
+  return null;
+};
+handlers.send_group_poke = handlers.group_poke;
+
+handlers.friend_poke = async (params, bridge, eventTranslator) => {
+  if (!bridge.session) return null;
+  const userId = String(params.user_id || "");
+  let uid = eventTranslator.getUidByUin(userId);
+  if (!uid) uid = userId;
+  try {
+    const msgService = bridge.session.getMsgService();
+    if (typeof msgService.sendPoke === "function") {
+      await msgService.sendPoke(uid);
+    }
+  } catch (e) {
+    console.error("[onebot-actions] friend_poke error:", e.message);
+  }
+  return null;
+};
 
 module.exports = { handlers };

@@ -18,6 +18,9 @@ class EventTranslator {
     // UIN <-> UID mapping built from observed messages
     this._uinToUid = new Map(); // uin(string) -> uid(string)
     this._uidToUin = new Map(); // uid(string) -> uin(string)
+    // Track buddy list for friend_add detection
+    this._knownBuddyUins = new Set();
+    this._buddyListInitialized = false;
   }
 
   /** Record a UIN<->UID mapping from observed data */
@@ -178,6 +181,26 @@ class EventTranslator {
         };
         this.cacheMsg(shortId, event);
         events.push(event);
+
+        // Emit group_upload notice for file elements
+        for (const el of msg.elements || []) {
+          if (el.fileElement) {
+            events.push({
+              time: parseInt(msg.msgTime) || Math.floor(Date.now() / 1000),
+              self_id: this.selfId,
+              post_type: "notice",
+              notice_type: "group_upload",
+              group_id: Number(msg.peerUin) || 0,
+              user_id: Number(msg.senderUin) || 0,
+              file: {
+                id: el.fileElement.fileUuid || "",
+                name: el.fileElement.fileName || "",
+                size: Number(el.fileElement.fileSize) || 0,
+                busid: 0,
+              },
+            });
+          }
+        }
       } else if (msg.chatType === 1 || msg.chatType === 100) {
         // Private message
         const event = {
@@ -287,11 +310,29 @@ class EventTranslator {
         }
       }
 
-      // JSON gray tips (poke, essence, etc.)
+      // Admin set/unset (groupElement type 5 or 13)
+      if (tip.subElementType === 4 && tip.groupElement) {
+        const ge2 = tip.groupElement;
+        if (ge2.type === 5 || ge2.type === 13) {
+          events.push({
+            time: parseInt(msg.msgTime) || Math.floor(Date.now() / 1000),
+            self_id: this.selfId,
+            post_type: "notice",
+            notice_type: "group_admin",
+            sub_type: ge2.type === 5 ? "set" : "unset",
+            group_id: Number(msg.peerUin) || 0,
+            user_id: Number(ge2.memberUin) || 0,
+          });
+        }
+      }
+
+      // JSON gray tips (poke, lucky_king, honor, etc.)
       if (tip.subElementType === 17 && tip.jsonGrayTipElement) {
         const json = tip.jsonGrayTipElement;
-        // busId "1061" = poke
-        if (json.busiId === "1061" || json.busiId === 1061) {
+        const busiId = String(json.busiId);
+
+        // Poke
+        if (busiId === "1061") {
           try {
             const items = JSON.parse(json.jsonStr);
             const actionUser = items?.find?.(i => i.uid)?.uid;
@@ -310,6 +351,42 @@ class EventTranslator {
             }
           } catch {}
         }
+
+        // Lucky king (red packet)
+        if (busiId === "1068") {
+          try {
+            const items = JSON.parse(json.jsonStr);
+            const luckyUser = items?.find?.(i => i.uid)?.uid;
+            events.push({
+              time: parseInt(msg.msgTime) || Math.floor(Date.now() / 1000),
+              self_id: this.selfId,
+              post_type: "notice",
+              notice_type: "notify",
+              sub_type: "lucky_king",
+              group_id: msg.chatType === 2 ? Number(msg.peerUin) || 0 : undefined,
+              user_id: Number(msg.senderUin) || 0,
+              target_id: Number(luckyUser) || 0,
+            });
+          } catch {}
+        }
+
+        // Honor change
+        if (busiId === "1064") {
+          try {
+            const items = JSON.parse(json.jsonStr);
+            const honorUser = items?.find?.(i => i.uid)?.uid;
+            events.push({
+              time: parseInt(msg.msgTime) || Math.floor(Date.now() / 1000),
+              self_id: this.selfId,
+              post_type: "notice",
+              notice_type: "notify",
+              sub_type: "honor",
+              group_id: msg.chatType === 2 ? Number(msg.peerUin) || 0 : undefined,
+              user_id: Number(honorUser) || 0,
+              honor_type: "talkative",
+            });
+          } catch {}
+        }
       }
     }
     return events;
@@ -318,29 +395,90 @@ class EventTranslator {
   // ---- Group events ----
 
   _translateGroupEvent(eventName, data) {
-    if (eventName === "onMemberListChange") {
-      // Member list refreshed - not a discrete event we need to push
-      return [];
-    }
-    if (eventName === "onGroupListUpdate") {
-      return [];
+    if (eventName === "onGroupNotifyChange") {
+      return this._onGroupNotifyChange(data);
     }
     return [];
+  }
+
+  _onGroupNotifyChange(data) {
+    const events = [];
+    const notifies = Array.isArray(data) ? data : data?.notifies || [data];
+
+    for (const notify of notifies) {
+      if (!notify || notify.status !== 0) continue; // Only pending
+      const groupId = Number(notify.group?.groupCode || notify.groupCode) || 0;
+      const requesterUin = Number(notify.user1?.uin || notify.requestorUin) || 0;
+      const inviterUin = Number(notify.user2?.uin || notify.invitorUin) || 0;
+      const comment = notify.postscript || "";
+      const seq = notify.seq || "";
+
+      if (notify.type === 1) {
+        // Join request
+        events.push({
+          time: Math.floor(Date.now() / 1000),
+          self_id: this.selfId,
+          post_type: "request",
+          request_type: "group",
+          sub_type: "add",
+          group_id: groupId,
+          user_id: requesterUin,
+          comment,
+          flag: `${seq}|${groupId}|${notify.type}`,
+        });
+      } else if (notify.type === 2 || notify.type === 13) {
+        // Invite
+        events.push({
+          time: Math.floor(Date.now() / 1000),
+          self_id: this.selfId,
+          post_type: "request",
+          request_type: "group",
+          sub_type: "invite",
+          group_id: groupId,
+          user_id: inviterUin,
+          comment,
+          flag: `${seq}|${groupId}|${notify.type}`,
+        });
+      }
+    }
+    return events;
   }
 
   // ---- Buddy events ----
 
   _translateBuddyEvent(eventName, data) {
-    // Cache UIN<->UID from buddy list updates
+    // Cache UIN<->UID from buddy list updates + detect friend_add
     if (eventName === "onBuddyListChange" || eventName === "onBuddyListChangedV2") {
+      const events = [];
       const categories = Array.isArray(data) ? data : [data];
+      const currentUins = new Set();
+
       for (const cat of categories) {
         for (const buddy of cat?.buddyList || []) {
           if (buddy.uin && buddy.uid) {
             this.recordUinUid(buddy.uin, buddy.uid);
           }
+          if (buddy.uin) currentUins.add(String(buddy.uin));
         }
       }
+
+      if (this._buddyListInitialized) {
+        for (const uin of currentUins) {
+          if (!this._knownBuddyUins.has(uin)) {
+            events.push({
+              time: Math.floor(Date.now() / 1000),
+              self_id: this.selfId,
+              post_type: "notice",
+              notice_type: "friend_add",
+              user_id: Number(uin) || 0,
+            });
+          }
+        }
+      }
+
+      this._knownBuddyUins = currentUins;
+      this._buddyListInitialized = true;
+      return events;
     }
 
     if (eventName === "onBuddyReqChange") {
