@@ -292,7 +292,7 @@ class Bridge {
     try { s.switchToFront(); } catch {}
     try { s.getMsgService()?.switchForeGround(); } catch {}
 
-    // Core listeners (same as PMHQ)
+    // Core listeners
     s.getMsgService().addKernelMsgListener(
       createListener("nodeIKernelMsgListener", {}, onEvent)
     );
@@ -333,7 +333,7 @@ class Bridge {
       );
     } catch {}
 
-    // === Extended listeners (beyond PMHQ) ===
+    // === Extended listeners ===
     const extended = [
       ["getOnlineStatusService", "addKernelOnlineStatusListener", "nodeIKernelOnlineStatusListener"],
       ["getRobotService", "addKernelRobotListener", "nodeIKernelRobotListener"],
@@ -399,7 +399,7 @@ class Bridge {
         const method = func.replace("loginService.", "");
         return await this._callMethod(target, method, args);
       } else {
-        // Fallback: try as global PMHQ-compatible path
+        // Fallback: try as global path
         return await this._evalChain(this.session, func, args);
       }
     } catch (e) {

@@ -21,9 +21,7 @@ services:
       - ONEBOT_WS_REVERSE_URLS=["ws://host.docker.internal:2536/OneBotv11"]
       - ONEBOT_TOKEN=
     networks:
-      app_network:
-        aliases:
-          - pmhq
+      - app_network
     volumes:
       - qq_volume:/root/.config/QQ
       - llob_data:/app/llonebot/data
@@ -35,7 +33,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      # LLOneBot connects to our bridge using the same PMHQ protocol
+      # LLOneBot connects to the bridge
       - PMHQ_HOST=qq-bridge
       - PMHQ_PORT=13000
       - ENABLE_ONEBOT_WS=false

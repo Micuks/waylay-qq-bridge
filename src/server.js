@@ -5,7 +5,7 @@ const { WebSocketServer, WebSocket } = require("ws");
 const { randomUUID } = require("crypto");
 
 /**
- * Combined WebSocket + HTTP server that speaks the PMHQ protocol.
+ * Combined WebSocket + HTTP server for bridge protocol.
  *
  * Downstream (LLOneBot) connects via:
  *   - WebSocket: ws://host:port/ws
@@ -57,7 +57,7 @@ class BridgeServer {
     }
   }
 
-  /** Push a kernel event in PMHQ-compatible format */
+  /** Push a kernel event to connected clients */
   pushEvent(listenerName, eventName, data) {
     const typeMap = {
       nodeIKernelMsgListener: "on_message",

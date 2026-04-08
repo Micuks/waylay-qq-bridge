@@ -1,7 +1,7 @@
 {
   "name": "qq-bridge",
   "version": "0.1.0",
-  "description": "PMHQ-compatible headless bridge for NTQQ",
+  "description": "Headless bridge for NTQQ with OneBot v11 support",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js"

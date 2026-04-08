@@ -55,7 +55,7 @@ async function main() {
 
   const bridge = new Bridge(config);
 
-  // PMHQ-compatible server (for LLOneBot backward compat)
+  // Bridge server (for LLOneBot backward compat)
   const server = new BridgeServer(config.port, config.host, bridge);
   bridge.setServer(server);
 

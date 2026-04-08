@@ -1,4 +1,4 @@
-# Build on top of the official PMHQ image which already has QQ installed
+# Base image with QQ pre-installed
 FROM docker.1ms.run/linyuchen/pmhq:latest
 
 # Upgrade QQ to latest version (base image ships an outdated QQ that gets rejected)
@@ -31,7 +31,7 @@ RUN node -e " \
   fs.writeFileSync('/opt/QQ/resources/app/package.json', JSON.stringify(pkg, null, 2)); \
 "
 
-# Replace the startup script to run our bridge instead of PMHQ
+# Replace the startup script
 COPY startup.sh /startup.sh
 RUN chmod +x /startup.sh
 
