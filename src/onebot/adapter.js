@@ -181,6 +181,11 @@ class OneBotAdapter {
     for (const event of events) {
       this._broadcast(event);
     }
+    // Pre-populate member cache once the group list arrives
+    if (!this._memberPreloaded && listenerName === "nodeIKernelGroupListener" && eventName === "onGroupListUpdate") {
+      this._memberPreloaded = true;
+      setTimeout(() => this._preloadGroupMembers(), 2000);
+    }
   }
 
   _broadcast(event) {
@@ -234,6 +239,26 @@ class OneBotAdapter {
       sub_type: "connect",
     };
     this._broadcast(event);
+    this._memberPreloaded = false;
+  }
+
+  /** Fetch member lists for all groups to populate the @ resolution cache */
+  async _preloadGroupMembers() {
+    if (!this.bridge.session) return;
+    try {
+      const groups = this.eventTranslator.getGroupList();
+      const groupService = this.bridge.session.getGroupService();
+      for (const g of groups) {
+        try {
+          const sceneId = groupService.createMemberListScene(g.groupCode, `preload_${g.groupCode}`);
+          await groupService.getNextMemberList(sceneId, undefined, 3000);
+          try { groupService.destroyMemberListScene(sceneId); } catch {}
+        } catch {}
+      }
+      console.log(`[onebot] Preloaded member lists for ${groups.length} groups`);
+    } catch (e) {
+      console.warn("[onebot] Failed to preload group members:", e.message);
+    }
   }
 }
 

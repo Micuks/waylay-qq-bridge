@@ -87,84 +87,91 @@ handlers.get_stranger_info = async (params, bridge) => {
 
 // ---- Group ----
 
-handlers.get_group_list = async (params, bridge) => {
-  if (!bridge.session) return [];
-  try {
-    const groupService = bridge.session.getGroupService();
-    const result = await groupService.getGroupList(true);
-    const groups = [];
-    if (result?.groupList) {
-      for (const g of result.groupList) {
-        groups.push({
-          group_id: Number(g.groupCode) || 0,
-          group_name: g.groupName || "",
-          member_count: g.memberCount || 0,
-          max_member_count: g.maxMember || 0,
-        });
-      }
-    }
-    return groups;
-  } catch (e) {
-    console.error("[onebot-actions] get_group_list error:", e.message);
-    return [];
+handlers.get_group_list = async (params, bridge, eventTranslator) => {
+  // Use cached group list from onGroupListUpdate events
+  const groups = eventTranslator.getGroupList();
+  if (groups.length > 0) {
+    return groups.map((g) => ({
+      group_id: Number(g.groupCode) || 0,
+      group_name: g.groupName || "",
+      member_count: g.memberCount || 0,
+      max_member_count: g.maxMember || 0,
+    }));
   }
+  // Fallback: trigger a refresh (data arrives via listener, return empty for now)
+  try { bridge.session?.getGroupService().getGroupList(true); } catch {}
+  return [];
 };
 
-handlers.get_group_info = async (params, bridge) => {
+handlers.get_group_info = async (params, bridge, eventTranslator) => {
   const groupId = String(params.group_id || "");
-  if (!bridge.session) return { group_id: Number(groupId), group_name: "", member_count: 0, max_member_count: 0 };
-  try {
-    const groupService = bridge.session.getGroupService();
-    const result = await groupService.getGroupList(false);
-    const g = result?.groupList?.find((g) => g.groupCode === groupId);
-    if (g) {
-      return {
-        group_id: Number(g.groupCode),
-        group_name: g.groupName || "",
-        member_count: g.memberCount || 0,
-        max_member_count: g.maxMember || 0,
-      };
-    }
-  } catch {}
+  const groups = eventTranslator.getGroupList();
+  const g = groups.find((g) => g.groupCode === groupId);
+  if (g) {
+    return {
+      group_id: Number(g.groupCode),
+      group_name: g.groupName || "",
+      member_count: g.memberCount || 0,
+      max_member_count: g.maxMember || 0,
+    };
+  }
   return { group_id: Number(groupId), group_name: "", member_count: 0, max_member_count: 0 };
 };
 
-handlers.get_group_member_list = async (params, bridge) => {
+/**
+ * Fetch group members via scene-based API.
+ * Triggers getNextMemberList which delivers data via onMemberListChange listener,
+ * populating the EventTranslator member cache.
+ * Returns a Promise that resolves with cached data after a short delay.
+ */
+async function fetchGroupMembersAndWait(bridge, groupId, eventTranslator) {
+  const groupService = bridge.session.getGroupService();
+  try {
+    const sceneId = groupService.createMemberListScene(groupId, `fetch_${Date.now()}`);
+    await groupService.getNextMemberList(sceneId, undefined, 3000);
+    try { groupService.destroyMemberListScene(sceneId); } catch {}
+  } catch {}
+  // Wait briefly for onMemberListChange events to populate cache
+  await new Promise((r) => setTimeout(r, 500));
+}
+
+handlers.get_group_member_list = async (params, bridge, eventTranslator) => {
   const groupId = String(params.group_id || "");
   if (!bridge.session) return [];
-  try {
-    const groupService = bridge.session.getGroupService();
-    const result = await groupService.getGroupMemberList(groupId, true);
-    const members = [];
-    const memberMap = result?.result?.infos || result?.infos;
-    if (memberMap) {
-      const entries = memberMap instanceof Map ? memberMap.entries() : Object.entries(memberMap);
-      for (const [, m] of entries) {
-        members.push(formatMember(m, groupId));
-      }
-    }
-    return members;
-  } catch (e) {
-    console.error("[onebot-actions] get_group_member_list error:", e.message);
-    return [];
+
+  // Trigger a fetch to populate cache
+  await fetchGroupMembersAndWait(bridge, groupId, eventTranslator);
+
+  // Return from cache
+  const cached = eventTranslator._groupMembers.get(groupId);
+  if (!cached || cached.size === 0) return [];
+
+  const members = [];
+  for (const [uin, info] of cached) {
+    members.push(formatMember({
+      uin, uid: info.uid, nick: info.nick, cardName: info.card,
+    }, groupId));
   }
+  return members;
 };
 
-handlers.get_group_member_info = async (params, bridge) => {
+handlers.get_group_member_info = async (params, bridge, eventTranslator) => {
   const groupId = String(params.group_id || "");
   const userId = String(params.user_id || "");
   if (!bridge.session) return formatMember({}, groupId);
-  try {
-    const groupService = bridge.session.getGroupService();
-    const result = await groupService.getGroupMemberList(groupId, false);
-    const memberMap = result?.result?.infos || result?.infos;
-    if (memberMap) {
-      const entries = memberMap instanceof Map ? memberMap.entries() : Object.entries(memberMap);
-      for (const [, m] of entries) {
-        if (String(m.uin) === userId) return formatMember(m, groupId);
-      }
-    }
-  } catch {}
+
+  // Check cache first
+  let member = eventTranslator.getGroupMember(groupId, userId);
+  if (!member) {
+    // Trigger fetch and wait
+    await fetchGroupMembersAndWait(bridge, groupId, eventTranslator);
+    member = eventTranslator.getGroupMember(groupId, userId);
+  }
+  if (member) {
+    return formatMember({
+      uin: userId, uid: member.uid, nick: member.nick, cardName: member.card,
+    }, groupId);
+  }
   return formatMember({ uin: userId }, groupId);
 };
 
@@ -245,7 +252,51 @@ handlers.send_private_msg = async (params, bridge, eventTranslator) => {
 
 async function sendMessage(peer, message, bridge, eventTranslator) {
   if (!bridge.session) throw new Error("Session not ready");
-  const elements = oneBotToNt(message);
+
+  // Build UID+name resolver for @ mentions (async pre-resolve, then sync pass to converter)
+  const segments = Array.isArray(message) ? message : typeof message === "string" ? [] : [message];
+  const atResolveMap = new Map(); // uin -> { uid, name }
+  for (const seg of segments) {
+    if (seg.type !== "at" || seg.data?.qq === "all") continue;
+    const uin = String(seg.data?.qq || "");
+    if (!uin || atResolveMap.has(uin)) continue;
+
+    // 1. Check cached group member info
+    if (peer.chatType === 2) {
+      const member = eventTranslator.getGroupMember(peer.peerUid, uin);
+      if (member?.uid) {
+        atResolveMap.set(uin, { uid: member.uid, name: member.card || member.nick || null });
+        continue;
+      }
+    }
+
+    // 2. Check UIN→UID cache
+    let uid = eventTranslator.getUidByUin(uin);
+
+    // 3. Async fallback: profile service lookup
+    if (!uid) {
+      try {
+        const r = await bridge.session.getProfileService().getUidByUin("FriendsServiceImpl", [uin]);
+        uid = r?.uidInfo?.get(uin) || null;
+        if (uid) eventTranslator.recordUinUid(uin, uid);
+      } catch {}
+    }
+
+    // 4. Get display name from profile if we have uid
+    let name = null;
+    if (uid && peer.chatType === 2) {
+      try {
+        const profiles = await bridge.session.getProfileService().getUserSimpleInfo(false, [uid]);
+        const p = profiles?.profileMap?.get(uid) || profiles?.get?.(uid);
+        if (p) name = p.nick || p.nickName || null;
+      } catch {}
+    }
+
+    atResolveMap.set(uin, { uid: uid || "", name });
+  }
+
+  const uidResolver = atResolveMap.size > 0 ? (uin) => atResolveMap.get(uin) || { uid: "", name: null } : null;
+  const elements = oneBotToNt(message, uidResolver);
   if (!elements.length) throw new Error("Empty message");
 
   // Register image files with NTQQ and copy to the expected path

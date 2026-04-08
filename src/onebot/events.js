@@ -18,6 +18,10 @@ class EventTranslator {
     // UIN <-> UID mapping built from observed messages
     this._uinToUid = new Map(); // uin(string) -> uid(string)
     this._uidToUin = new Map(); // uid(string) -> uin(string)
+    // Group member cache: groupId -> Map<uin, { uid, nick, card }>
+    this._groupMembers = new Map();
+    // Group list cache from onGroupListUpdate
+    this._groupList = new Map(); // groupCode -> group info
     // Track buddy list for friend_add detection
     this._knownBuddyUins = new Set();
     this._buddyListInitialized = false;
@@ -29,6 +33,24 @@ class EventTranslator {
       this._uinToUid.set(String(uin), uid);
       this._uidToUin.set(uid, String(uin));
     }
+  }
+
+  /** Record group member info from observed data */
+  recordGroupMember(groupId, uin, uid, nick, card) {
+    if (!groupId || !uin) return;
+    const gid = String(groupId);
+    if (!this._groupMembers.has(gid)) this._groupMembers.set(gid, new Map());
+    const existing = this._groupMembers.get(gid).get(String(uin)) || {};
+    this._groupMembers.get(gid).set(String(uin), {
+      uid: uid || existing.uid || "",
+      nick: nick || existing.nick || "",
+      card: card || existing.card || "",
+    });
+  }
+
+  /** Look up group member info by UIN */
+  getGroupMember(groupId, uin) {
+    return this._groupMembers.get(String(groupId))?.get(String(uin));
   }
 
   /** Look up UID from UIN (from cache) */
@@ -128,6 +150,11 @@ class EventTranslator {
       // Record UIN<->UID from sender
       if (msg.senderUin && msg.senderUid) {
         this.recordUinUid(msg.senderUin, msg.senderUid);
+      }
+      // For group messages, cache sender member info (nick/card) for @ resolution
+      if (msg.chatType === 2 && msg.senderUin && msg.peerUin) {
+        this.recordGroupMember(msg.peerUin, msg.senderUin, msg.senderUid,
+          msg.sendNickName, msg.senderMemberName || msg.sendMemberName);
       }
       // For C2C messages, record peer mapping
       if (msg.chatType === 1 && msg.peerUid && msg.peerUin) {
@@ -398,7 +425,54 @@ class EventTranslator {
     if (eventName === "onGroupNotifyChange") {
       return this._onGroupNotifyChange(data);
     }
+    // Cache group list from onGroupListUpdate
+    if (eventName === "onGroupListUpdate") {
+      this._cacheGroupList(data);
+    }
+    // Cache member info from member list/info change events
+    if (eventName === "onMemberInfoChange" || eventName === "onMemberListChange") {
+      this._cacheMemberInfo(data);
+    }
     return [];
+  }
+
+  _cacheGroupList(data) {
+    // data: [updateType, groupList]
+    const groups = Array.isArray(data) ? data[1] : data?.groupList || [];
+    if (!Array.isArray(groups)) return;
+    for (const g of groups) {
+      if (g?.groupCode) this._groupList.set(g.groupCode, g);
+    }
+  }
+
+  getGroupList() {
+    return Array.from(this._groupList.values());
+  }
+
+  _cacheMemberInfo(data) {
+    const groupCode = data?.groupCode || (Array.isArray(data) ? data[0] : null);
+    if (!groupCode) return;
+    // onMemberInfoChange: [groupCode, changeType, infos(Map)]
+    // onMemberListChange: { sceneId, groupCode, ids, infos(Map), finish, hasRobot }
+    const infos = data?.infos || (Array.isArray(data) ? data[2] : null);
+    if (!infos) return;
+    let count = 0;
+    try {
+      // Native Maps from wrapper.node may not pass instanceof Map check,
+      // but they do support .entries() and for..of
+      const iter = typeof infos.entries === "function" ? infos.entries()
+        : Object.entries(infos);
+      for (const [uid, m] of iter) {
+        if (m?.uin) {
+          this.recordUinUid(m.uin, uid);
+          this.recordGroupMember(groupCode, m.uin, uid, m.nick, m.cardName);
+          count++;
+        }
+      }
+    } catch {}
+    if (count > 0) {
+      console.log(`[onebot-events] Cached ${count} members for group ${groupCode}`);
+    }
   }
 
   _onGroupNotifyChange(data) {

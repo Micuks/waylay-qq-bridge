@@ -290,17 +290,19 @@ function convertSegment(seg, uidResolver) {
         return {
           elementType: 1,
           elementId: "",
-          textElement: { content: "@全体成员", atType: 1, atUid: "", atTinyId: "", atNtUid: "" },
+          textElement: { content: "@全体成员", atType: 1, atUid: "0", atTinyId: "", atNtUid: "all" },
         };
       }
-      const uid = uidResolver?.(qq) || "";
+      const resolved = uidResolver?.(qq);
+      const uid = typeof resolved === "string" ? resolved : resolved?.uid || "";
+      const name = (typeof resolved === "object" ? resolved?.name : null) || seg.data?.name || qq;
       return {
         elementType: 1,
         elementId: "",
         textElement: {
-          content: `@${seg.data?.name || qq}`,
+          content: `@${name}`,
           atType: 2,
-          atUid: qq,
+          atUid: uid || qq,
           atTinyId: "",
           atNtUid: uid,
         },
