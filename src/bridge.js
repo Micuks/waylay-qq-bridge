@@ -40,6 +40,13 @@ class Bridge {
   // --- Event handler ---
 
   _onEvent(event) {
+    // Log all listener callbacks for debugging
+    const dataStr = JSON.stringify(event.data);
+    const isMediaEvent = /[Rr]ich[Mm]edia|[Uu]pload|[Tt]ransfer/.test(event.eventName);
+    const maxLen = isMediaEvent ? 2000 : 200;
+    const preview = dataStr && dataStr.length > maxLen ? dataStr.substring(0, maxLen) + "..." : dataStr;
+    console.log(`[event] ${event.listenerName}/${event.eventName} ${preview}`);
+
     if (this.server) {
       this.server.pushEvent(event.listenerName, event.eventName, event.data);
     }
@@ -51,6 +58,13 @@ class Bridge {
   // --- Initialization ---
 
   async init() {
+    return this._initStandaloneMode();
+  }
+
+  /**
+   * Initialize the bridge: load wrapper, init engine, login, create session.
+   */
+  async _initStandaloneMode() {
     console.log("[bridge] Loading wrapper.node...");
     this.wrapper = require(path.join(this.appDir, "wrapper.node"));
 
@@ -69,7 +83,7 @@ class Bridge {
     engine.initWithDeskTopConfig(
       {
         base_path_prefix: "",
-        platform_type: 3,
+        platform_type: os.platform() === "win32" ? 3 : os.platform() === "darwin" ? 4 : 5,
         app_type: 4,
         app_version: qqVer,
         os_version: os.version(),
@@ -100,10 +114,15 @@ class Bridge {
         "nodeIKernelLoginListener",
         {
           onQRCodeGetPicture: (data) => {
-            if (data && data.pngBase64QrcodeData) {
-              console.log("[bridge] QR code received. Saving to /tmp/qrcode.png");
-              const buf = Buffer.from(data.pngBase64QrcodeData, "base64");
+            let b64 = data?.pngBase64QrcodeData || "";
+            if (b64) {
+              const commaIdx = b64.indexOf(",");
+              if (commaIdx !== -1 && b64.startsWith("data:")) {
+                b64 = b64.substring(commaIdx + 1);
+              }
+              const buf = Buffer.from(b64, "base64");
               fs.writeFileSync("/tmp/qrcode.png", buf);
+              console.log(`[bridge] QR code saved (${buf.length} bytes). View at http://HOST:${this.config.port}/qrcode`);
             } else {
               console.log("[bridge] QR code event (no image data)");
             }
@@ -117,7 +136,6 @@ class Bridge {
             this.selfInfo.uin = data.uin;
             this.selfInfo.uid = data.uid;
             this._initSession(data.uin, data.uid);
-            if (this.onebotAdapter) this.onebotAdapter.notifyLogin();
           },
           onLoginFailed: (...args) => {
             console.error("[bridge] Login failed:", args);
@@ -130,11 +148,9 @@ class Bridge {
     this.loginService.connect();
     console.log("[bridge] Login service connected, waiting for login...");
 
-    // Auto quick login if configured, with fallback to QR code
     if (this.config.quickLoginQQ) {
       setTimeout(() => this._quickLogin(this.config.quickLoginQQ), 1000);
     } else {
-      // No quick login configured, go straight to QR code
       setTimeout(() => {
         console.log("[bridge] Requesting QR code for login...");
         this.loginService.getQRCodePicture();
@@ -146,7 +162,20 @@ class Bridge {
 
   async _initSession(uin, uid) {
     console.log("[bridge] Creating session...");
-    this.session = this.wrapper.NodeIQQNTWrapperSession.create();
+    const SessionClass = this.wrapper.NodeIQQNTWrapperSession;
+
+    // QQ >=3.2.27: create startup session first, then get the wrapper session
+    const StartupSession = this.wrapper.NodeIQQNTStartupSessionWrapper;
+    if (StartupSession && typeof StartupSession.create === "function") {
+      this.startupSession = StartupSession.create();
+      this.session = SessionClass.getNTWrapperSession("nt_1");
+    } else if (typeof SessionClass.create === "function") {
+      this.session = SessionClass.create();
+    } else {
+      throw new Error("Cannot create session - no known factory method");
+    }
+    if (!this.session) throw new Error("Session creation returned undefined");
+    console.log("[bridge] Session created");
 
     const globalDataDir = this._getGlobalDataDir();
     const desktopPathConfig = os.platform() === "win32"
@@ -156,70 +185,100 @@ class Bridge {
       ? path.join(process.env.USERPROFILE, "Downloads")
       : path.join(process.env.HOME, "Downloads");
 
-    const guid = this._getOrCreateGuid(globalDataDir);
     const appid = this._getAppid(globalDataDir);
     const qqVer = this.packageJSON.version;
 
+    // Get GUID from login service and format as UUID (must match what was registered during login)
+    let guid = "";
+    try {
+      const rawGuid = this.loginService.getMachineGuid();
+      // Format as UUID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+      guid = rawGuid.slice(0, 8) + "-" + rawGuid.slice(8, 12) + "-" + rawGuid.slice(12, 16) + "-" + rawGuid.slice(16, 20) + "-" + rawGuid.slice(20);
+      console.log("[bridge] GUID:", guid);
+    } catch (e) {
+      guid = this._getOrCreateGuid(globalDataDir);
+      console.log("[bridge] GUID from file fallback:", guid);
+    }
+
+    // Platform: 3=Windows, 4=Mac, 5=Linux
+    const systemPlatform = os.platform() === "win32" ? 3 : os.platform() === "darwin" ? 4 : 5;
+
     const onEvent = (e) => this._onEvent(e);
 
-    this.session.init(
-      {
-        selfUin: uin,
-        selfUid: uid,
-        desktopPathConfig: { account_path: desktopPathConfig },
-        clientVer: qqVer,
-        a2: "",
-        d2: "",
-        d2Key: "",
-        machineId: "",
-        platform: 3,
-        platVer: os.release(),
-        appid,
-        rdeliveryConfig: {
-          appKey: "",
-          systemId: 0,
-          appId: "",
-          logicEnvironment: "",
-          platform: 3,
-          language: "",
-          sdkVersion: "",
-          userId: "",
-          appVersion: "",
-          osVersion: "",
-          bundleId: "",
-          serverUrl: "",
-          fixedAfterHitKeys: [""],
-        },
-        defaultFileDownloadPath: downloadPath,
-        deviceInfo: {
-          guid,
-          buildVer: qqVer,
-          localId: 2052,
-          devName: os.hostname(),
-          devType: os.type(),
-          vendorName: "",
-          osVer: os.version(),
-          vendorOsName: os.platform(),
-          setMute: false,
-          vendorType: 0,
-        },
-        deviceConfig: '{"appearance":{"isSplitViewMode":true},"msg":{}}',
-        deviceType: 3,
+    const sessionConfig = {
+      selfUin: uin,
+      selfUid: uid,
+      desktopPathConfig: { account_path: desktopPathConfig },
+      clientVer: qqVer,
+      a2: "",
+      d2: "",
+      d2Key: "",
+      machineId: "",
+      platform: systemPlatform,
+      platVer: os.release(),
+      appid,
+      rdeliveryConfig: {
+        appKey: "",
+        systemId: 0,
+        appId: "",
+        logicEnvironment: "",
+        platform: systemPlatform,
+        language: "",
+        sdkVersion: "",
+        userId: "",
+        appVersion: "",
+        osVersion: "",
+        bundleId: "",
+        serverUrl: "",
+        fixedAfterHitKeys: [""],
       },
-      createListener("nodeIQQNTWrapperSessionListener", {}, onEvent),
-      createListener("nodeIQQNTWrapperSessionListener", {}, onEvent),
-      createListener("nodeIQQNTWrapperSessionListener", {
-        onSessionInitComplete: (...args) => {
-          console.log("[bridge] Session initialized!");
-          this._onSessionReady();
-        },
-      }, onEvent)
-    );
+      defaultFileDownloadPath: downloadPath,
+      deviceInfo: {
+        guid,
+        buildVer: qqVer,
+        localId: 2052,
+        devName: os.hostname(),
+        devType: os.type(),
+        vendorName: "",
+        osVer: os.release(),
+        vendorOsName: os.type(),
+        setMute: false,
+        vendorType: 0,
+      },
+      deviceConfig: '{"appearance":{"isSplitViewMode":true},"msg":{}}',
+    };
 
-    try {
-      this.session.startNT(0);
-    } catch {
-      this.session.startNT();
+    const sessionListener = createListener("nodeIKernelSessionListener", {
+      onOpentelemetryInit: (info) => {
+        if (info && info.is_init) {
+          console.log("[bridge] Session initialized");
+          this._onSessionReady();
+        }
+      },
+    }, onEvent);
+
+    const dependsAdapter = {
+      onMSFStatusChange() {},
+      onMSFSsoError() {},
+      getGroupCode() {},
+    };
+    const dispatcherAdapter = {
+      dispatchRequest() {},
+      dispatchCall() {},
+      dispatchCallWithJson() {},
+    };
+
+    this.session.init(sessionConfig, dependsAdapter, dispatcherAdapter, sessionListener);
+
+    // Start the session
+    if (this.startupSession && typeof this.startupSession.start === "function") {
+      this.startupSession.start();
+    } else {
+      try {
+        this.session.startNT(0);
+      } catch {
+        this.session.startNT();
+      }
     }
   }
 
@@ -228,6 +287,10 @@ class Bridge {
   _onSessionReady() {
     const s = this.session;
     const onEvent = (e) => this._onEvent(e);
+    // Signal online and foreground status
+    try { s.onLine(true); } catch {}
+    try { s.switchToFront(); } catch {}
+    try { s.getMsgService()?.switchForeGround(); } catch {}
 
     // Core listeners (same as PMHQ)
     s.getMsgService().addKernelMsgListener(
@@ -247,14 +310,28 @@ class Bridge {
     const ft = s.getFlashTransferService();
     try {
       ft.addFileSetDownloadListener(
-        createListener("nodeIKernelFlashTransferListener", {}, onEvent)
+        createListener("nodeIKernelFlashTransferDownloadListener", {}, onEvent)
       );
       ft.addFileSetUploadListener(
-        createListener("nodeIKernelFlashTransferListener", {}, onEvent)
+        createListener("nodeIKernelFlashTransferUploadListener", {}, onEvent)
       );
     } catch (e) {
       console.warn("[bridge] FlashTransfer listener registration failed:", e.message);
     }
+
+    // BDH upload listener
+    try {
+      s.getBdhUploadService().addKernelBdhUploadListener(
+        createListener("nodeIKernelBdhUploadListener", {}, onEvent)
+      );
+    } catch {}
+
+    // Rich media listener
+    try {
+      s.getRichMediaService().addKernelRichMediaListener(
+        createListener("nodeIKernelRichMediaListener", {}, onEvent)
+      );
+    } catch {}
 
     // === Extended listeners (beyond PMHQ) ===
     const extended = [
@@ -277,11 +354,8 @@ class Bridge {
         const service = s[getService]();
         if (service && typeof service[addListener] === "function") {
           service[addListener](createListener(listenerName, {}, onEvent));
-          console.log(`[bridge] Registered ${listenerName}`);
         }
-      } catch (e) {
-        console.warn(`[bridge] ${listenerName} registration skipped: ${e.message}`);
-      }
+      } catch {}
     }
 
     // Notify self info
@@ -297,6 +371,8 @@ class Bridge {
         type: "on_session",
         data: { sub_type: "onSessionInitComplete", data: {} },
       });
+      // Re-notify OneBot adapter so Yunzai re-fetches friend/group lists
+      if (this.onebotAdapter) this.onebotAdapter.notifyLogin();
     }, 3000);
   }
 
@@ -401,10 +477,11 @@ class Bridge {
   // --- Helpers ---
 
   _getGlobalDataDir() {
+    // NapCat uses: dataPath + /nt_qq/global where dataPath = ~/.config/QQ
     if (os.platform() === "win32") {
       return path.join(process.env.USERPROFILE, "Documents", "Tencent Files", "nt_qq", "global");
     }
-    return path.join(process.env.HOME, ".config", "QQ", "global");
+    return path.join(process.env.HOME, ".config", "QQ", "nt_qq", "global");
   }
 
   _getOrCreateGuid(globalDir) {
@@ -429,21 +506,23 @@ class Bridge {
       } catch {}
     }
 
-    // Try to extract from major.node strings or package.json
+    // Extract appid from major.node binary (the REAL protocol appid).
+    // package.json.appid is the store/platform appid which differs from the
+    // actual protocol appid embedded in the encrypted code.
     let appid = "";
-    const platformKey = os.platform();
-    if (this.packageJSON.appid && this.packageJSON.appid[platformKey]) {
-      appid = String(this.packageJSON.appid[platformKey]);
-    }
+    try {
+      const majorPath = path.join(this.appDir, "major.node");
+      const majorContent = fs.readFileSync(majorPath);
+      const match = majorContent.toString("latin1").match(/QQAppId\/(\d+)/);
+      if (match) appid = match[1];
+    } catch {}
 
+    // Fallback to package.json
     if (!appid) {
-      // Fallback: try to read from major.node binary
-      try {
-        const majorPath = path.join(this.appDir, "major.node");
-        const majorContent = fs.readFileSync(majorPath);
-        const match = majorContent.toString("latin1").match(/QQAppId\/(\d+)/);
-        if (match) appid = match[1];
-      } catch {}
+      const platformKey = os.platform();
+      if (this.packageJSON.appid && this.packageJSON.appid[platformKey]) {
+        appid = String(this.packageJSON.appid[platformKey]);
+      }
     }
 
     if (appid) {

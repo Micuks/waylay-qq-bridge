@@ -7,7 +7,7 @@
     "start": "node src/index.js"
   },
   "dependencies": {
-    "ws": "^8.18.0"
+    "ws": "^8.20.0"
   },
   "engines": {
     "node": ">=18.0.0"

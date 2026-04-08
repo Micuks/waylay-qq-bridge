@@ -142,9 +142,17 @@ class OneBotAdapter {
 
     // API request from Yunzai
     if (msg.action) {
-      const response = await this._handleAction(msg.action, msg.params || {}, msg.echo);
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(response, mapReplacer));
+      console.log(`[onebot] <- action: ${msg.action} echo: ${msg.echo}`);
+      try {
+        const response = await this._handleAction(msg.action, msg.params || {}, msg.echo);
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify(response, mapReplacer));
+        }
+        if (response.retcode !== 0) {
+          console.log(`[onebot] -> ${msg.action} failed: ${response.msg}`);
+        }
+      } catch (e) {
+        console.error(`[onebot] -> ${msg.action} unhandled error:`, e.message);
       }
     }
   }

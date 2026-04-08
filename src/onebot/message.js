@@ -1,5 +1,10 @@
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+const { execSync } = require("child_process");
+
 /**
  * NTQQ element <-> OneBot v11 message segment converter.
  *
@@ -13,6 +18,95 @@
  */
 
 const IMAGE_HTTP_HOST = "https://gchat.qpic.cn";
+const TEMP_DIR = "/tmp/waylay-media";
+
+// Ensure temp directory exists
+try { fs.mkdirSync(TEMP_DIR, { recursive: true }); } catch {}
+
+/**
+ * Resolve a OneBot image file reference to a local file path.
+ * Supports: base64://..., http(s)://..., file:///..., or local path.
+ */
+function resolveImageFile(file) {
+  if (!file) return null;
+
+  // base64 encoded image
+  if (file.startsWith("base64://")) {
+    const b64 = file.slice(9);
+    const buf = Buffer.from(b64, "base64");
+    const md5 = crypto.createHash("md5").update(buf).digest("hex");
+    const ext = detectImageExt(buf);
+    const filePath = path.join(TEMP_DIR, `${md5}.${ext}`);
+    fs.writeFileSync(filePath, buf);
+    const dim = getImageDimensions(buf);
+    return { path: filePath, size: buf.length, md5, ...dim };
+  }
+
+  // HTTP(S) URL — download with curl
+  if (file.startsWith("http://") || file.startsWith("https://")) {
+    const md5 = crypto.createHash("md5").update(file).digest("hex");
+    const filePath = path.join(TEMP_DIR, `${md5}.tmp`);
+    try {
+      execSync(`curl -fsSL -o "${filePath}" "${file}"`, { timeout: 30000 });
+      const buf = fs.readFileSync(filePath);
+      const realMd5 = crypto.createHash("md5").update(buf).digest("hex");
+      const ext = detectImageExt(buf);
+      const finalPath = path.join(TEMP_DIR, `${realMd5}.${ext}`);
+      if (finalPath !== filePath) fs.renameSync(filePath, finalPath);
+      const dim = getImageDimensions(buf);
+      return { path: finalPath, size: buf.length, md5: realMd5, ...dim };
+    } catch (e) {
+      console.error("[message] Failed to download image:", e.message);
+      return null;
+    }
+  }
+
+  // file:// protocol
+  if (file.startsWith("file://")) {
+    const localPath = file.slice(7);
+    if (fs.existsSync(localPath)) {
+      const buf = fs.readFileSync(localPath);
+      const md5 = crypto.createHash("md5").update(buf).digest("hex");
+      return { path: localPath, size: buf.length, md5 };
+    }
+    return null;
+  }
+
+  // Direct local path
+  if (fs.existsSync(file)) {
+    const buf = fs.readFileSync(file);
+    const md5 = crypto.createHash("md5").update(buf).digest("hex");
+    return { path: file, size: buf.length, md5 };
+  }
+
+  return null;
+}
+
+function detectImageExt(buf) {
+  if (buf[0] === 0x89 && buf[1] === 0x50) return "png";
+  if (buf[0] === 0xFF && buf[1] === 0xD8) return "jpg";
+  if (buf[0] === 0x47 && buf[1] === 0x49) return "gif";
+  if (buf[0] === 0x52 && buf[1] === 0x49) return "webp";
+  return "png";
+}
+
+function getImageDimensions(buf) {
+  try {
+    // PNG: width at offset 16, height at offset 20 (big-endian uint32)
+    if (buf[0] === 0x89 && buf[1] === 0x50) {
+      return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+    }
+    // JPEG: scan for SOF0 marker (0xFF 0xC0)
+    if (buf[0] === 0xFF && buf[1] === 0xD8) {
+      for (let i = 2; i < buf.length - 8; i++) {
+        if (buf[i] === 0xFF && (buf[i + 1] === 0xC0 || buf[i + 1] === 0xC2)) {
+          return { width: buf.readUInt16BE(i + 7), height: buf.readUInt16BE(i + 5) };
+        }
+      }
+    }
+  } catch {}
+  return { width: 0, height: 0 };
+}
 
 // ---- NTQQ elements -> OneBot v11 segments ----
 
@@ -236,18 +330,33 @@ function convertSegment(seg, uidResolver) {
         },
       };
 
-    case "image":
-      // Image handling requires file download/upload via NT API
-      // For now, return a placeholder that the action handler will process
+    case "image": {
+      const fileRef = seg.data?.file || "";
+      const resolved = resolveImageFile(fileRef);
+      if (!resolved) {
+        console.warn("[message] Could not resolve image:", fileRef.substring(0, 80));
+        return null;
+      }
       return {
         elementType: 2,
         elementId: "",
         picElement: {
-          fileName: seg.data?.file || "",
-          sourcePath: seg.data?.file || "",
-          _obFile: seg.data?.file || "", // marker for action handler to process
+          md5HexStr: resolved.md5,
+          fileSize: String(resolved.size),
+          fileName: path.basename(resolved.path),
+          sourcePath: resolved.path,
+          original: true,
+          picType: 1000,
+          picSubType: 0,
+          picWidth: resolved.width || 0,
+          picHeight: resolved.height || 0,
+          fileUuid: "",
+          fileSubId: "",
+          thumbFileSize: 0,
+          summary: "[图片]",
         },
       };
+    }
 
     case "json":
       return {

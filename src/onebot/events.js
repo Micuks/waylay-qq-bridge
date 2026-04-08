@@ -15,6 +15,27 @@ class EventTranslator {
     this._msgIdMap = new Map(); // msgId -> shortId
     this._shortIdMap = new Map(); // shortId -> msgId
     this._msgCache = new Map(); // shortId -> msg data
+    // UIN <-> UID mapping built from observed messages
+    this._uinToUid = new Map(); // uin(string) -> uid(string)
+    this._uidToUin = new Map(); // uid(string) -> uin(string)
+  }
+
+  /** Record a UIN<->UID mapping from observed data */
+  recordUinUid(uin, uid) {
+    if (uin && uid && uid.startsWith("u_")) {
+      this._uinToUid.set(String(uin), uid);
+      this._uidToUin.set(uid, String(uin));
+    }
+  }
+
+  /** Look up UID from UIN (from cache) */
+  getUidByUin(uin) {
+    return this._uinToUid.get(String(uin));
+  }
+
+  /** Look up UIN from UID (from cache) */
+  getUinByUid(uid) {
+    return this._uidToUin.get(uid);
   }
 
   get selfId() {
@@ -100,6 +121,16 @@ class EventTranslator {
 
     for (const msg of msgList) {
       if (!msg || !msg.msgId) continue;
+
+      // Record UIN<->UID from sender
+      if (msg.senderUin && msg.senderUid) {
+        this.recordUinUid(msg.senderUin, msg.senderUid);
+      }
+      // For C2C messages, record peer mapping
+      if (msg.chatType === 1 && msg.peerUid && msg.peerUin) {
+        this.recordUinUid(msg.peerUin, msg.peerUid);
+      }
+
       // Skip system messages (msgType 5 = gray tip/system)
       if (msg.msgType === 5) {
         const tipEvents = this._handleGrayTip(msg);
@@ -300,6 +331,18 @@ class EventTranslator {
   // ---- Buddy events ----
 
   _translateBuddyEvent(eventName, data) {
+    // Cache UIN<->UID from buddy list updates
+    if (eventName === "onBuddyListChange" || eventName === "onBuddyListChangedV2") {
+      const categories = Array.isArray(data) ? data : [data];
+      for (const cat of categories) {
+        for (const buddy of cat?.buddyList || []) {
+          if (buddy.uin && buddy.uid) {
+            this.recordUinUid(buddy.uin, buddy.uid);
+          }
+        }
+      }
+    }
+
     if (eventName === "onBuddyReqChange") {
       // Friend request
       const events = [];

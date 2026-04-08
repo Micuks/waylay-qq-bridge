@@ -1,5 +1,7 @@
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
 const { oneBotToNt } = require("./message");
 
 /**
@@ -206,12 +208,37 @@ handlers.send_group_msg = async (params, bridge, eventTranslator) => {
 
 handlers.send_private_msg = async (params, bridge, eventTranslator) => {
   const userId = String(params.user_id || "");
-  // Need to convert UIN to UID for NT API
-  let peerUid = userId;
-  try {
-    const result = await bridge.session.getUidByUin("FriendsServiceImpl", [userId]);
-    peerUid = result?.uidInfo?.get(userId) || userId;
-  } catch {}
+  // Convert UIN to UID for NT API (C2C requires UID)
+  let peerUid = eventTranslator.getUidByUin(userId);
+  if (!peerUid) {
+    // Try profile service
+    try {
+      const profileService = bridge.session.getProfileService();
+      const result = await profileService.getUidByUin("FriendsServiceImpl", [userId]);
+      peerUid = result?.uidInfo?.get(userId) || null;
+    } catch {}
+  }
+  if (!peerUid) {
+    // Try buddy service with getUserDetailInfoByUin
+    try {
+      const buddyService = bridge.session.getBuddyService();
+      const buddyList = await buddyService.getBuddyList(true);
+      for (const cat of buddyList?.data || []) {
+        for (const buddy of cat.buddyList || []) {
+          if (buddy.uin === userId) {
+            peerUid = buddy.uid;
+            eventTranslator.recordUinUid(userId, buddy.uid);
+            break;
+          }
+        }
+        if (peerUid) break;
+      }
+    } catch {}
+  }
+  if (!peerUid) {
+    console.warn("[onebot-actions] Cannot resolve UID for UIN:", userId);
+    peerUid = userId; // fallback, will likely fail
+  }
   const peer = { chatType: 1, peerUid, guildId: "" };
   return await sendMessage(peer, params.message, bridge, eventTranslator);
 };
@@ -221,9 +248,43 @@ async function sendMessage(peer, message, bridge, eventTranslator) {
   const elements = oneBotToNt(message);
   if (!elements.length) throw new Error("Empty message");
 
+  // Register image files with NTQQ and copy to the expected path
+  for (const el of elements) {
+    if (el.elementType === 2 && el.picElement?.sourcePath) {
+      try {
+        const msgService = bridge.session.getMsgService();
+        const pathInfo = {
+          md5HexStr: el.picElement.md5HexStr || "",
+          fileName: el.picElement.fileName || "",
+          elementType: 2,
+          elementSubType: 0,
+          thumbSize: 0,
+          needCreate: true,
+          downloadType: 1,
+          file_uuid: "",
+        };
+        let mediaPath = msgService.getRichMediaFilePathForGuild(pathInfo);
+        if (mediaPath) {
+          const dir = path.dirname(mediaPath);
+          fs.mkdirSync(dir, { recursive: true });
+          fs.copyFileSync(el.picElement.sourcePath, mediaPath);
+          el.picElement.sourcePath = mediaPath;
+          console.log("[onebot-actions] Image registered at:", mediaPath);
+        }
+      } catch (e) {
+        console.warn("[onebot-actions] Image registration error:", e.message);
+      }
+    }
+  }
+
   try {
     const msgService = bridge.session.getMsgService();
     const result = await msgService.sendMsg("0", peer, elements, new Map());
+    console.log("[onebot-actions] sendMsg result:", JSON.stringify(result)?.substring(0, 200));
+
+    // For media messages, sendMsg returns -1 immediately — the actual upload
+    // happens asynchronously via BDH. The message is still created (onAddSendMsg fires).
+    // We return the msgId from the result regardless.
     const msgId = result?.msgId || result?.result?.msgId || "0";
     const shortId = eventTranslator.createShortId(msgId);
     return { message_id: shortId };
@@ -387,6 +448,83 @@ handlers.set_group_leave = async (params, bridge) => {
 };
 
 // ---- Stubs for APIs that Yunzai calls but we can gracefully fail ----
+
+// Debug: dump service methods
+handlers.__debug = async (params, bridge) => {
+  const s = bridge.session;
+  if (!s) return { error: "no session" };
+  const result = {};
+
+  // Check wrapper exports
+  try {
+    const wrapperKeys = Object.keys(bridge.wrapper).filter(k => /Util|util|Path|path|Config|config/i.test(k));
+    result.wrapperUtilKeys = wrapperKeys;
+    // Check for NodeQQNTWrapperUtil
+    const util = bridge.wrapper.NodeQQNTWrapperUtil;
+    if (util) {
+      result.utilMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(util.get ? util.get() : util))
+        .filter(m => m !== "constructor");
+    } else {
+      result.util = "not found";
+    }
+  } catch (e) { result.utilError = e.message; }
+
+  // Check MSF status
+  try {
+    const msf = s.getMSFService();
+    result.msfStatus = msf.getMsfStatus();
+    result.serverTime = msf.getServerTime();
+  } catch (e) { result.msfError = e.message; }
+
+  // Check session ID
+  try { result.sessionId = s.getSessionId(); } catch (e) { result.sessionIdError = e.message; }
+
+  // Check account path
+  try { result.accountPath = s.getAccountPath(); } catch (e) { result.accountPathError = e.message; }
+
+  // RichMediaService methods
+  try {
+    const rms = s.getRichMediaService();
+    result.richMediaService = Object.getOwnPropertyNames(Object.getPrototypeOf(rms))
+      .filter(m => m !== "constructor");
+  } catch (e) { result.richMediaServiceError = e.message; }
+
+  // Wrapper exports
+  try {
+    result.wrapperExports = Object.keys(bridge.wrapper)
+      .filter(k => /Listener|Adapter|Depend|Dispatch|Media|Rich/i.test(k));
+  } catch (e) { result.wrapperError = e.message; }
+
+  // MsgService - check addSendMsg signature
+  try {
+    const ms = s.getMsgService();
+    result.addSendMsgLength = ms.addSendMsg?.length;
+    result.sendMsgLength = ms.sendMsg?.length;
+  } catch (e) { result.msgServiceError = e.message; }
+
+  // Check if there's a media-related method on the session itself
+  try {
+    const sessionMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(s))
+      .filter(m => /media|rich|upload|transfer/i.test(m));
+    result.sessionMediaMethods = sessionMethods;
+  } catch (e) {}
+
+  // Check FlashTransferService methods
+  try {
+    const ft = s.getFlashTransferService();
+    result.flashTransferMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(ft))
+      .filter(m => m !== "constructor");
+  } catch (e) { result.flashTransferError = e.message; }
+
+  // Check BdhUploadService
+  try {
+    const buh = s.getBdhUploadService();
+    result.bdhUploadMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(buh))
+      .filter(m => m !== "constructor");
+  } catch (e) { result.bdhUploadError = e.message; }
+
+  return result;
+};
 
 handlers._set_model_show = async () => null;
 handlers.get_guild_service_profile = async () => { throw new Error("not supported"); };

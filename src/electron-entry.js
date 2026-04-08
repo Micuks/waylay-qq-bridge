@@ -1,22 +1,20 @@
 "use strict";
 
 /**
- * Entry point when running inside QQ's Electron process.
+ * Entry point: Standalone mode.
  *
- * QQ's package.json is patched to set "main" to this file.
- * This gives us access to all native symbols (qq_magic_napi_register, etc.)
- * that wrapper.node requires.
+ * Loads wrapper.node directly, handles engine init, login, and session
+ * ourselves. No QQ GUI is loaded.
  */
 
-// Make sure we can find our npm modules (ws, etc.)
 module.paths.push("/app/qq-bridge/node_modules");
 
-// Prevent Electron from opening any BrowserWindow
 const { app } = require("electron");
-app.on("window-all-closed", (e) => e.preventDefault());
+
 app.disableHardwareAcceleration();
 
-app.whenReady().then(() => {
-  console.log("[electron-entry] Electron ready, starting qq-bridge...");
+console.log("[hook] Starting bridge in standalone mode...");
+app.on("ready", () => {
+  console.log("[hook] App ready, loading bridge...");
   require("/app/qq-bridge/src/index.js");
 });

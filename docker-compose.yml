@@ -13,7 +13,7 @@ services:
     environment:
       - BRIDGE_PORT=13000
       - BRIDGE_HOST=0.0.0.0
-      - AUTO_LOGIN_QQ=1732167820
+      - AUTO_LOGIN_QQ=3597656306
       # OneBot v11: forward WS server on port 3001
       - ONEBOT_WS_PORT=3001
       - ONEBOT_WS_HOST=0.0.0.0
