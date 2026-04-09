@@ -1,5 +1,8 @@
 FROM debian:bookworm-slim
 
+# Use TUNA mirror for faster apt downloads in China
+RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources
+
 # System dependencies for Electron/wrapper.node: Xvfb, dbus, libGL, X11 libs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl xvfb dbus x11-utils \
@@ -19,6 +22,9 @@ RUN curl -fsSL -o /tmp/qq.deb \
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y --no-install-recommends nodejs ffmpeg && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Use npmmirror for faster npm downloads in China
+RUN npm config set registry https://registry.npmmirror.com
 
 # Copy bridge source
 WORKDIR /app/qq-bridge
