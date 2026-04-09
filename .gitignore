@@ -137,3 +137,9 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Reverse engineering artifacts (do not commit)
+introspect-result.json
+protocol-strings.json
+frida-introspect.js
+introspect.js

@@ -546,74 +546,102 @@ handlers.__debug = async (params, bridge) => {
   const s = bridge.session;
   if (!s) return { error: "no session" };
   const result = {};
-
-  // Check wrapper exports
-  try {
-    const wrapperKeys = Object.keys(bridge.wrapper).filter(k => /Util|util|Path|path|Config|config/i.test(k));
-    result.wrapperUtilKeys = wrapperKeys;
-    // Check for NodeQQNTWrapperUtil
-    const util = bridge.wrapper.NodeQQNTWrapperUtil;
-    if (util) {
-      result.utilMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(util.get ? util.get() : util))
-        .filter(m => m !== "constructor");
-    } else {
-      result.util = "not found";
-    }
-  } catch (e) { result.utilError = e.message; }
-
-  // Check MSF status
   try {
     const msf = s.getMSFService();
     result.msfStatus = msf.getMsfStatus();
     result.serverTime = msf.getServerTime();
   } catch (e) { result.msfError = e.message; }
+  try { result.sessionId = s.getSessionId(); } catch {}
+  try { result.accountPath = s.getAccountPath(); } catch {}
+  return result;
+};
 
-  // Check session ID
-  try { result.sessionId = s.getSessionId(); } catch (e) { result.sessionIdError = e.message; }
+/**
+ * Full introspection of wrapper.node API surface.
+ * Enumerates all wrapper exports, session services, and their methods with param counts.
+ */
+handlers.__introspect = async (params, bridge) => {
+  const result = { wrapper: {}, session: {}, listeners: {} };
 
-  // Check account path
-  try { result.accountPath = s.getAccountPath(); } catch (e) { result.accountPathError = e.message; }
-
-  // RichMediaService methods
+  // 1. All wrapper.node top-level exports
   try {
-    const rms = s.getRichMediaService();
-    result.richMediaService = Object.getOwnPropertyNames(Object.getPrototypeOf(rms))
-      .filter(m => m !== "constructor");
-  } catch (e) { result.richMediaServiceError = e.message; }
-
-  // Wrapper exports
-  try {
-    result.wrapperExports = Object.keys(bridge.wrapper)
-      .filter(k => /Listener|Adapter|Depend|Dispatch|Media|Rich/i.test(k));
+    const wrapperKeys = Object.keys(bridge.wrapper).sort();
+    for (const key of wrapperKeys) {
+      const val = bridge.wrapper[key];
+      const type = typeof val;
+      if (type === "function") {
+        // It's a class or function — enumerate static methods and prototype
+        const entry = { type: "class", static: [], prototype: [] };
+        // Static methods
+        for (const m of Object.getOwnPropertyNames(val).filter(m => m !== "constructor" && m !== "prototype" && m !== "length" && m !== "name")) {
+          const fn = val[m];
+          entry.static.push({ name: m, type: typeof fn, params: typeof fn === "function" ? fn.length : undefined });
+        }
+        // Prototype methods (for classes instantiated via .get() or .create())
+        if (val.prototype) {
+          for (const m of Object.getOwnPropertyNames(val.prototype).filter(m => m !== "constructor")) {
+            const fn = val.prototype[m];
+            entry.prototype.push({ name: m, type: typeof fn, params: typeof fn === "function" ? fn.length : undefined });
+          }
+        }
+        // Try .get() to get singleton instance and enumerate its methods
+        try {
+          const inst = val.get();
+          if (inst && typeof inst === "object") {
+            entry.instance = [];
+            for (const m of Object.getOwnPropertyNames(Object.getPrototypeOf(inst)).filter(m => m !== "constructor")) {
+              const fn = inst[m];
+              entry.instance.push({ name: m, type: typeof fn, params: typeof fn === "function" ? fn.length : undefined });
+            }
+          }
+        } catch {}
+        result.wrapper[key] = entry;
+      } else {
+        result.wrapper[key] = { type, value: String(val).substring(0, 100) };
+      }
+    }
   } catch (e) { result.wrapperError = e.message; }
 
-  // MsgService - check addSendMsg signature
-  try {
-    const ms = s.getMsgService();
-    result.addSendMsgLength = ms.addSendMsg?.length;
-    result.sendMsgLength = ms.sendMsg?.length;
-  } catch (e) { result.msgServiceError = e.message; }
+  // 2. Session services — discover all get*Service methods and enumerate their methods
+  const s = bridge.session;
+  if (s) {
+    try {
+      const sessionProto = Object.getOwnPropertyNames(Object.getPrototypeOf(s))
+        .filter(m => m !== "constructor").sort();
+      result.session._methods = sessionProto.map(m => ({
+        name: m, params: typeof s[m] === "function" ? s[m].length : undefined
+      }));
 
-  // Check if there's a media-related method on the session itself
-  try {
-    const sessionMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(s))
-      .filter(m => /media|rich|upload|transfer/i.test(m));
-    result.sessionMediaMethods = sessionMethods;
-  } catch (e) {}
+      // Enumerate each get*Service method
+      const serviceGetters = sessionProto.filter(m => /^get\w+Service/.test(m));
+      for (const getter of serviceGetters) {
+        try {
+          const svc = s[getter]();
+          if (!svc) continue;
+          const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(svc))
+            .filter(m => m !== "constructor").sort();
+          result.session[getter] = methods.map(m => ({
+            name: m, params: typeof svc[m] === "function" ? svc[m].length : undefined
+          }));
+        } catch (e) {
+          result.session[getter] = { error: e.message };
+        }
+      }
+    } catch (e) { result.sessionError = e.message; }
+  }
 
-  // Check FlashTransferService methods
+  // 3. List all known listener class names from wrapper exports
   try {
-    const ft = s.getFlashTransferService();
-    result.flashTransferMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(ft))
-      .filter(m => m !== "constructor");
-  } catch (e) { result.flashTransferError = e.message; }
-
-  // Check BdhUploadService
-  try {
-    const buh = s.getBdhUploadService();
-    result.bdhUploadMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(buh))
-      .filter(m => m !== "constructor");
-  } catch (e) { result.bdhUploadError = e.message; }
+    const listenerKeys = Object.keys(bridge.wrapper).filter(k => /Listener/i.test(k));
+    for (const key of listenerKeys) {
+      const cls = bridge.wrapper[key];
+      if (cls?.prototype) {
+        result.listeners[key] = Object.getOwnPropertyNames(cls.prototype)
+          .filter(m => m !== "constructor")
+          .map(m => ({ name: m, params: typeof cls.prototype[m] === "function" ? cls.prototype[m].length : undefined }));
+      }
+    }
+  } catch (e) { result.listenersError = e.message; }
 
   return result;
 };
