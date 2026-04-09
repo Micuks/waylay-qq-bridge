@@ -6,11 +6,11 @@
 
 **Lightweight, fast, pure-JS headless NTQQ bridge with built-in OneBot v11 support**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-≥18-green.svg)](https://nodejs.org/)
 [![QQ Version](https://img.shields.io/badge/QQ-3.2.27-blue.svg)](https://im.qq.com/linuxqq/index.shtml)
 [![OneBot v11](https://img.shields.io/badge/OneBot-v11-black.svg)](https://github.com/botuniverse/onebot-11)
-[![Dependencies](https://img.shields.io/badge/deps-1_(ws)-brightgreen.svg)](#why-waylay)
+[![Dependencies](https://img.shields.io/badge/deps-1_(ws)-brightgreen.svg)](#highlights)
 
 [中文](README.md)
 
@@ -18,42 +18,59 @@
 
 ---
 
-## Features
+## About
 
-- **Ultra-lightweight** — 9 files, ~3,000 lines of plain JavaScript, 1 dependency (`ws`), 208 KB node_modules
-- **Sub-millisecond queries** — Event-driven cache, all read actions < 1ms, **9–48x faster** than LLOneBot
-- **Zero abstraction tax** — Calls `wrapper.node` native APIs directly, ~3 function calls from OneBot action to QQ kernel
-- **Low memory** — ~150 MB runtime (including QQ kernel), no Winston/Express/SQLite/React overhead
-- **Single process** — No master/worker split, no WebUI server, no separate DB process
-- **Ready to deploy** — Docker one-liner, connects directly to Yunzai / Koishi / Miao-Yunzai
-- **LLOneBot compatible** — Also exposes LLOneBot-compatible JSON-over-WebSocket protocol (port 13000)
+Waylay is a lightweight headless NTQQ bridge written in plain JavaScript with built-in OneBot v11 protocol support. It loads QQ's `wrapper.node` native module directly to communicate with the QQ kernel — ideal for minimal deployments with low resource requirements.
+
+## Highlights
+
+- **Lightweight** — 9 source files, ~3,000 lines of plain JavaScript, 1 runtime dependency (`ws`)
+- **Fast queries** — Event-driven in-memory cache, sub-millisecond read responses
+- **Simple architecture** — Direct `wrapper.node` calls, no extra abstraction layers
+- **Low resource usage** — Single-process, no WebUI / database / logging framework overhead
+- **Ready to deploy** — Docker one-liner, connects directly to Yunzai / Koishi
+- **LLOneBot compatible** — Also provides LLOneBot-compatible WebSocket protocol (port 13000)
 
 ## How It Works
 
 ```
-Yunzai / Koishi ←→ Waylay (OneBot v11) ←→ wrapper.node ←→ QQ Server
+Bot Framework (Yunzai / Koishi) ←→ Waylay (OneBot v11) ←→ wrapper.node ←→ QQ Server
 ```
 
 1. Runs inside QQ's Electron process (patched `package.json` entry point)
 2. Loads NTQQ's `wrapper.node` native module directly
 3. Initializes QQ kernel, handles login (QR code or quick login)
-4. Registers all kernel event listeners (messages, groups, friends, etc.)
-5. Exposes:
-   - **OneBot v11 WebSocket** — port 3001 (forward/reverse WS)
-   - **Bridge WebSocket** — port 13000 (LLOneBot compatible)
+4. Registers kernel event listeners (messages, groups, friends, etc.)
+5. Exposes OneBot v11 WebSocket (port 3001) and Bridge WebSocket (port 13000)
 
-## Quick Start
+## Installation
+
+### Option 1: Docker (Recommended)
 
 ```bash
-# Clone
 git clone https://github.com/Micuks/waylay.git
 cd waylay
-
-# Launch with Docker
 docker compose up -d --build
+```
 
-# Access QR code for login
-open http://localhost:13000/qrcode
+Then visit `http://localhost:13000/qrcode` to scan the QR code and log in.
+
+### Option 2: GitHub Releases
+
+Download the latest release from [Releases](https://github.com/Micuks/waylay/releases), then:
+
+```bash
+cd waylay
+docker compose up -d --build
+```
+
+### Quick Login
+
+Set the `AUTO_LOGIN_QQ` environment variable to skip QR code scanning:
+
+```yaml
+environment:
+  - AUTO_LOGIN_QQ=123456789
 ```
 
 ## Environment Variables
@@ -76,60 +93,48 @@ open http://localhost:13000/qrcode
 
 > Waylay loads NTQQ's `wrapper.node` and should work with any QQ Linux version that includes this module.
 
-## Performance
+## Comparison
 
-### Comparison with Similar Projects
+The QQ Bot ecosystem has several excellent open-source projects, each with its own strengths. Here is an objective comparison to help you choose:
 
-| | **Waylay** | NapCatQQ | LLOneBot | Lagrange.Core |
+| | **Waylay** | **NapCatQQ** | **LLOneBot** | **Lagrange.Core** |
 |---|---|---|---|---|
 | **Language** | JavaScript | TypeScript | TypeScript | C# |
-| **Source code** | **~3,000 lines / 9 files** | ~3 MB / 832 files | ~1.7 MB / 529 files | ~1.4 MB / 1,027 files |
-| **Runtime deps** | **1** (`ws`) | ~30 npm packages | 23 npm packages | 6 NuGet packages |
-| **node_modules** | **208 KB** | ~100+ MB | ~80+ MB | N/A (.NET) |
-| **App code size** | **120 KB** | ~3 MB | ~1.7 MB | ~1.4 MB |
-| **Runtime memory** | **~150 MB** | ~300 MB+ | ~300 MB+ (with QQNT) | ~50-100 MB |
-| **Approach** | Direct wrapper.node | wrapper.node + FFI | QQNT plugin (LiteLoader) | Protocol reimplementation |
-| **Requires QQ** | Yes | Yes | Yes (+ LiteLoader) | No |
+| **Source size** | ~3,000 lines / 9 files | ~3 MB / 832 files | ~1.7 MB / 529 files | ~1.4 MB / 1,027 files |
+| **Runtime deps** | 1 (`ws`) | ~30 npm packages | 23 npm packages | 6 NuGet packages |
+| **node_modules** | 208 KB | ~100+ MB | ~80+ MB | N/A (.NET) |
+| **Approach** | Direct wrapper.node loading | process.dlopen wrapper.node | PMHQ memory injection + WebSocket | Protocol reimplementation |
+| **Requires QQ** | Yes | Yes | Yes (+ PMHQ) | No |
 | **Status** | Active | Active | Active | Archived (2025) |
 
-### Response Latency (Waylay vs LLOneBot, 10 rounds avg)
+> Each project has its own design philosophy. NapCatQQ is feature-rich with a mature ecosystem; LLOneBot (LuckyLilliaBot) supports multiple protocol adapters; Lagrange.Core needs no QQ client. Waylay focuses on minimalism, suitable for resource-constrained or simplicity-oriented deployments.
 
-| Action | Waylay | LLOneBot | Ratio |
-|--------|--------|----------|-------|
-| `get_login_info` | **0.7ms** | 6.3ms | 9x |
-| `get_friend_list` | **1.0ms** | 47.9ms | **48x** |
-| `get_group_list` | **0.8ms** | 27.3ms | **34x** |
-| `get_group_info` | **0.6ms** | 28.4ms | **47x** |
-| `get_group_member_list` | **1.0ms** | 10.2ms | **10x** |
-| `get_group_member_info` | **0.5ms** | 12.0ms | **24x** |
-| `send_group_msg` | 403ms | 457ms | 1.1x |
+### Query Latency Reference (Waylay vs LLOneBot, 10-round avg)
 
-> All query actions are sub-millisecond thanks to event-driven caching. `send_group_msg` is equivalent — both are bounded by QQ server round-trip.
+| Action | Waylay | LLOneBot | Note |
+|--------|--------|----------|------|
+| `get_login_info` | 0.7ms | 6.3ms | |
+| `get_friend_list` | 1.0ms | 47.9ms | |
+| `get_group_list` | 0.8ms | 27.3ms | |
+| `get_group_info` | 0.6ms | 28.4ms | |
+| `get_group_member_list` | 1.0ms | 10.2ms | |
+| `get_group_member_info` | 0.5ms | 12.0ms | |
+| `send_group_msg` | 403ms | 457ms | QQ server bound |
 
-### Architecture Comparison
+> Waylay's query speed advantage comes from its event-driven in-memory cache design. Message sending latency is comparable — both are bounded by QQ server network round-trip.
+
+### Architecture Overview
 
 ```
-NapCatQQ (24 packages, ~30 deps):
-  Yunzai ←→ NapCat-OneBot ←→ NapCat-Core ←→ napi2native.node ←→ wrapper.node ←→ QQ Server
+NapCatQQ:
+  Bot Framework ←→ NapCat-OneBot ←→ NapCat-Core ←→ wrapper.node ←→ QQ Server
 
-LLOneBot (23 deps):
-  Yunzai ←→ LLOneBot plugin ←→ LiteLoaderQQNT ←→ QQNT Renderer ←→ QQ Server
+LLOneBot:
+  Bot Framework ←→ LLBot ←→ PMHQ (memory injection) ←→ QQNT ←→ QQ Server
 
-Waylay (1 dep):
-  Yunzai ←→ Waylay ←→ wrapper.node ←→ QQ Server
+Waylay:
+  Bot Framework ←→ Waylay ←→ wrapper.node ←→ QQ Server
 ```
-
-## Why Waylay
-
-| Feature | Details |
-|---------|---------|
-| **Ultra-lightweight** | ~3,000 lines of plain JS, 1 dep, 208 KB node_modules — no TS compilation, no bundler, no monorepo |
-| **Sub-ms queries** | Kernel event listeners → in-memory cache, no database, no API round-trip per query |
-| **Low memory** | ~150 MB (including QQ kernel). NapCat/LLOneBot typically 300+ MB (Winston, Express, SQLite, React/Vite) |
-| **Zero abstraction** | Direct `wrapper.node` calls, no DI (inversify), no plugin system (cordis), no protobuf codegen |
-| **Single process** | No master/worker, no WebUI server, no separate DB process |
-| **Fast startup** | wrapper.node load + engine init + login + session ready in seconds, no compilation, no bundling |
-| **Built-in OneBot v11** | Direct connection to Yunzai/Koishi, no LLOneBot middleware layer, saves one hop and ~200 MB memory |
 
 ## OneBot v11 Protocol
 
@@ -245,18 +250,17 @@ Waylay (1 dep):
 | `markdown` | ✅ | — | Markdown |
 | `music` | — | ✅ | Music share (custom) |
 
-## LLOneBot Compatibility
+## Acknowledgements
 
-Waylay also exposes a LLOneBot-compatible JSON-over-WebSocket protocol on port 13000. LLOneBot can connect to `ws://host:13000/ws` as a drop-in replacement.
+Waylay is inspired by and grateful to the following projects:
 
-## QR Code Login
-
-When quick login fails (expired token), the bridge falls back to QR code login. Access the QR code at:
-
-```
-http://host:13000/qrcode
-```
+- [NapCatQQ](https://github.com/NapNeko/NapCatQQ) — Feature-rich NTQQ framework
+- [LLOneBot](https://github.com/LLOneBot/LLOneBot) — Multi-protocol QQ Bot solution
+- [Lagrange.Core](https://github.com/LagrangeDev/Lagrange.Core) — Elegant C# protocol implementation
+- [OneBot v11](https://github.com/botuniverse/onebot-11) — Unified Bot protocol standard
 
 ## License
 
-[MIT](LICENSE)
+[Apache License 2.0](LICENSE) — Free to use, attribution required.
+
+Copyright 2026 Micuks

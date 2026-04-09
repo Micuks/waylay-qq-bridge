@@ -6,11 +6,11 @@
 
 **轻量、高速、纯 JS 的 NTQQ 无头桥接，内置 OneBot v11 协议支持**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-≥18-green.svg)](https://nodejs.org/)
 [![QQ Version](https://img.shields.io/badge/QQ-3.2.27-blue.svg)](https://im.qq.com/linuxqq/index.shtml)
 [![OneBot v11](https://img.shields.io/badge/OneBot-v11-black.svg)](https://github.com/botuniverse/onebot-11)
-[![Dependencies](https://img.shields.io/badge/依赖-1_(ws)-brightgreen.svg)](#为什么选择-waylay)
+[![Dependencies](https://img.shields.io/badge/依赖-1_(ws)-brightgreen.svg)](#项目特点)
 
 [English](README-en.md)
 
@@ -18,42 +18,59 @@
 
 ---
 
-## 特性
+## 简介
 
-- **极致轻量** — 9 个文件、~3,000 行纯 JavaScript，1 个依赖 (`ws`)，208 KB node_modules
-- **亚毫秒查询** — 事件驱动缓存，所有读操作 < 1ms 响应，比 LLOneBot 快 **9–48 倍**
-- **零抽象税** — 直接调用 `wrapper.node` 原生接口，从 OneBot Action 到 QQ 内核仅 ~3 层调用
-- **低内存占用** — 运行时 ~150 MB（含 QQ 内核），无 Winston/Express/SQLite/React 等额外开销
-- **单进程架构** — 无 master/worker 分离、无 WebUI 进程、无独立数据库进程
-- **开箱即用** — Docker 一键部署，直连 Yunzai / Koishi / Miao-Yunzai 等框架
-- **LLOneBot 兼容** — 同时暴露 LLOneBot 兼容的 JSON-over-WebSocket 协议（端口 13000）
+Waylay 是一个轻量级的 NTQQ 无头桥接工具，使用纯 JavaScript 编写，内置 OneBot v11 协议支持。它直接加载 QQ 的 `wrapper.node` 原生模块与 QQ 内核通信，适合追求简洁部署和低资源占用的场景。
+
+## 项目特点
+
+- **轻量** — 9 个源文件、~3,000 行纯 JavaScript，仅 1 个运行时依赖 (`ws`)
+- **快速查询** — 基于事件驱动的内存缓存，读操作亚毫秒级响应
+- **简洁架构** — 直接调用 `wrapper.node`，无额外抽象层
+- **低资源占用** — 单进程运行，无额外 WebUI / 数据库 / 日志框架开销
+- **开箱即用** — Docker 一键部署，直连 Yunzai / Koishi 等主流框架
+- **LLOneBot 兼容** — 同时提供 LLOneBot 兼容的 WebSocket 协议（端口 13000）
 
 ## 工作原理
 
 ```
-Yunzai / Koishi ←→ Waylay (OneBot v11) ←→ wrapper.node ←→ QQ 服务器
+Bot 框架 (Yunzai / Koishi) ←→ Waylay (OneBot v11) ←→ wrapper.node ←→ QQ 服务器
 ```
 
 1. 在 QQ 的 Electron 进程中运行（补丁 `package.json` 入口点）
 2. 直接加载 NTQQ 的 `wrapper.node` 原生模块
 3. 初始化 QQ 内核、处理登录（扫码或快速登录）
-4. 注册全部内核事件监听（消息、群组、好友等）
-5. 对外暴露：
-   - **OneBot v11 WebSocket** — 端口 3001（正向/反向 WS）
-   - **Bridge WebSocket** — 端口 13000（LLOneBot 兼容）
+4. 注册内核事件监听（消息、群组、好友等）
+5. 对外暴露 OneBot v11 WebSocket（端口 3001）和 Bridge WebSocket（端口 13000）
 
-## 快速开始
+## 安装与部署
+
+### 方式一：Docker（推荐）
 
 ```bash
-# 克隆仓库
 git clone https://github.com/Micuks/waylay.git
 cd waylay
-
-# Docker 一键启动
 docker compose up -d --build
+```
 
-# 访问二维码登录
-open http://localhost:13000/qrcode
+启动后访问 `http://localhost:13000/qrcode` 扫码登录。
+
+### 方式二：GitHub Releases
+
+前往 [Releases](https://github.com/Micuks/waylay/releases) 下载最新版本，解压后：
+
+```bash
+cd waylay
+docker compose up -d --build
+```
+
+### 快速登录
+
+设置环境变量 `AUTO_LOGIN_QQ` 为你的 QQ 号即可跳过扫码：
+
+```yaml
+environment:
+  - AUTO_LOGIN_QQ=123456789
 ```
 
 ## 环境变量
@@ -76,60 +93,48 @@ open http://localhost:13000/qrcode
 
 > Waylay 加载 NTQQ 的 `wrapper.node`，理论上支持所有包含该模块的 QQ Linux 版本。
 
-## 性能对比
+## 同类项目对比
 
-### 与同类项目对比
+QQ Bot 生态中有多个优秀的开源项目，各有侧重。以下是客观的技术参数对比，帮助你根据需求选择：
 
-| | **Waylay** | NapCatQQ | LLOneBot | Lagrange.Core |
+| | **Waylay** | **NapCatQQ** | **LLOneBot** | **Lagrange.Core** |
 |---|---|---|---|---|
 | **语言** | JavaScript | TypeScript | TypeScript | C# |
-| **源码规模** | **~3,000 行 / 9 文件** | ~3 MB / 832 文件 | ~1.7 MB / 529 文件 | ~1.4 MB / 1,027 文件 |
-| **运行时依赖** | **1** (`ws`) | ~30 npm 包 | 23 npm 包 | 6 NuGet 包 |
-| **node_modules** | **208 KB** | ~100+ MB | ~80+ MB | N/A (.NET) |
-| **应用代码体积** | **120 KB** | ~3 MB | ~1.7 MB | ~1.4 MB |
-| **运行内存** | **~150 MB** | ~300 MB+ | ~300 MB+（含 QQNT） | ~50-100 MB |
-| **实现方式** | 直接调用 wrapper.node | wrapper.node + FFI | QQNT 插件 (LiteLoader) | 协议重新实现 |
-| **需要 QQ** | 是 | 是 | 是（+ LiteLoader） | 否 |
-| **项目状态** | 活跃维护 | 活跃 | 活跃 | 已归档 (2025) |
+| **源码规模** | ~3,000 行 / 9 文件 | ~3 MB / 832 文件 | ~1.7 MB / 529 文件 | ~1.4 MB / 1,027 文件 |
+| **运行时依赖** | 1 (`ws`) | ~30 npm 包 | 23 npm 包 | 6 NuGet 包 |
+| **node_modules** | 208 KB | ~100+ MB | ~80+ MB | N/A (.NET) |
+| **实现方式** | 直接加载 wrapper.node | process.dlopen 加载 wrapper.node | PMHQ 内存注入 + WebSocket | 协议重新实现 |
+| **需要 QQ 客户端** | 是 | 是 | 是（+ PMHQ） | 否 |
+| **项目状态** | 活跃 | 活跃 | 活跃 | 已归档 (2025) |
 
-### 响应延迟对比（Waylay vs LLOneBot，10 轮平均值）
+> 每个项目都有自己的设计理念和适用场景。NapCatQQ 功能全面、生态成熟；LLOneBot (LuckyLilliaBot) 支持多协议适配；Lagrange.Core 无需 QQ 客户端。Waylay 的定位是极简轻量，适合资源有限或偏好简洁部署的用户。
 
-| Action | Waylay | LLOneBot | 倍率 |
+### 查询响应延迟参考（Waylay vs LLOneBot，10 轮平均值）
+
+| Action | Waylay | LLOneBot | 说明 |
 |--------|--------|----------|------|
-| `get_login_info` | **0.7ms** | 6.3ms | 9x |
-| `get_friend_list` | **1.0ms** | 47.9ms | **48x** |
-| `get_group_list` | **0.8ms** | 27.3ms | **34x** |
-| `get_group_info` | **0.6ms** | 28.4ms | **47x** |
-| `get_group_member_list` | **1.0ms** | 10.2ms | **10x** |
-| `get_group_member_info` | **0.5ms** | 12.0ms | **24x** |
-| `send_group_msg` | 403ms | 457ms | 1.1x |
+| `get_login_info` | 0.7ms | 6.3ms | |
+| `get_friend_list` | 1.0ms | 47.9ms | |
+| `get_group_list` | 0.8ms | 27.3ms | |
+| `get_group_info` | 0.6ms | 28.4ms | |
+| `get_group_member_list` | 1.0ms | 10.2ms | |
+| `get_group_member_info` | 0.5ms | 12.0ms | |
+| `send_group_msg` | 403ms | 457ms | 受限于 QQ 服务器往返 |
 
-> 所有查询类 Action 均为亚毫秒级响应，得益于事件驱动的内存缓存。`send_group_msg` 耗时相当 — 两者均受限于 QQ 服务器往返延迟。
+> Waylay 的查询速度优势来自事件驱动的内存缓存设计。发送消息耗时两者相当，均受限于 QQ 服务器网络延迟。
 
-### 架构对比
+### 架构概览
 
 ```
-NapCatQQ (24 packages, ~30 deps):
-  Yunzai ←→ NapCat-OneBot ←→ NapCat-Core ←→ napi2native.node ←→ wrapper.node ←→ QQ Server
+NapCatQQ:
+  Bot 框架 ←→ NapCat-OneBot ←→ NapCat-Core ←→ wrapper.node ←→ QQ Server
 
-LLOneBot (23 deps):
-  Yunzai ←→ LLOneBot plugin ←→ LiteLoaderQQNT ←→ QQNT Renderer ←→ QQ Server
+LLOneBot:
+  Bot 框架 ←→ LLBot ←→ PMHQ (内存注入) ←→ QQNT ←→ QQ Server
 
-Waylay (1 dep):
-  Yunzai ←→ Waylay ←→ wrapper.node ←→ QQ Server
+Waylay:
+  Bot 框架 ←→ Waylay ←→ wrapper.node ←→ QQ Server
 ```
-
-## 为什么选择 Waylay
-
-| 特性 | 说明 |
-|------|------|
-| **极致轻量** | ~3,000 行纯 JS，1 个依赖，208 KB node_modules — 无 TypeScript 编译、无打包器、无 monorepo |
-| **亚毫秒查询** | 内核事件监听 → 内存缓存，无数据库、无 API 往返 |
-| **低内存** | ~150 MB（含 QQ 内核）。NapCat/LLOneBot 通常 300+ MB（Winston、Express、SQLite、React/Vite） |
-| **零抽象层** | 直接调用 `wrapper.node`，无依赖注入 (inversify)、无插件系统 (cordis)、无 protobuf 代码生成 |
-| **单进程** | 无 master/worker、无 WebUI 服务器、无独立数据库进程 |
-| **秒级启动** | wrapper.node 加载 + 引擎初始化 + 登录 + 会话就绪，无编译步骤、无资源打包、无数据库迁移 |
-| **内置 OneBot v11** | 直连 Yunzai/Koishi，无需 LLOneBot 中间层，省去一跳和 ~200 MB 额外内存 |
 
 ## OneBot v11 协议支持
 
@@ -245,18 +250,17 @@ Waylay (1 dep):
 | `markdown` | ✅ | — | Markdown |
 | `music` | — | ✅ | 音乐分享（自定义） |
 
-## LLOneBot 兼容
+## 致谢
 
-Waylay 同时在端口 13000 暴露与 LLOneBot 兼容的 JSON-over-WebSocket 协议。LLOneBot 可直接连接 `ws://host:13000/ws` 作为即插即用的替代方案。
+Waylay 的诞生离不开以下项目的启发和贡献：
 
-## 二维码登录
-
-快速登录失效时（Token 过期），自动回退到扫码登录。访问二维码：
-
-```
-http://host:13000/qrcode
-```
+- [NapCatQQ](https://github.com/NapNeko/NapCatQQ) — 功能全面的 NTQQ 框架
+- [LLOneBot](https://github.com/LLOneBot/LLOneBot) — 多协议适配的 QQ Bot 方案
+- [Lagrange.Core](https://github.com/LagrangeDev/Lagrange.Core) — 优雅的 C# 协议实现
+- [OneBot v11](https://github.com/botuniverse/onebot-11) — 统一的 Bot 协议标准
 
 ## 许可证
 
-[MIT](LICENSE) - 自由使用，开放修改。
+[Apache License 2.0](LICENSE) — 自由使用，需保留版权声明和出处。
+
+Copyright 2026 Micuks
