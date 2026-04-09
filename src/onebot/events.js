@@ -22,6 +22,8 @@ class EventTranslator {
     this._groupMembers = new Map();
     // Group list cache from onGroupListUpdate
     this._groupList = new Map(); // groupCode -> group info
+    // Buddy list cache: uin -> { uid, nick, remark }
+    this._buddyList = new Map();
     // Track buddy list for friend_add detection
     this._knownBuddyUins = new Set();
     this._buddyListInitialized = false;
@@ -449,6 +451,10 @@ class EventTranslator {
     return Array.from(this._groupList.values());
   }
 
+  getBuddyList() {
+    return this._buddyList;
+  }
+
   _cacheMemberInfo(data) {
     const groupCode = data?.groupCode || (Array.isArray(data) ? data[0] : null);
     if (!groupCode) return;
@@ -532,7 +538,14 @@ class EventTranslator {
           if (buddy.uin && buddy.uid) {
             this.recordUinUid(buddy.uin, buddy.uid);
           }
-          if (buddy.uin) currentUins.add(String(buddy.uin));
+          if (buddy.uin) {
+            currentUins.add(String(buddy.uin));
+            this._buddyList.set(String(buddy.uin), {
+              uid: buddy.uid || "",
+              nick: buddy.nick || "",
+              remark: buddy.remark || "",
+            });
+          }
         }
       }
 

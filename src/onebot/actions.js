@@ -38,28 +38,23 @@ handlers.get_status = async (params, bridge) => {
 
 // ---- Friend / User ----
 
-handlers.get_friend_list = async (params, bridge) => {
-  if (!bridge.session) return [];
-  try {
-    const buddyService = bridge.session.getBuddyService();
-    const result = await buddyService.getBuddyList(true);
+handlers.get_friend_list = async (params, bridge, eventTranslator) => {
+  // Serve from cache (populated by onBuddyListChange events)
+  const cached = eventTranslator.getBuddyList();
+  if (cached.size > 0) {
     const friends = [];
-    if (result?.data) {
-      for (const category of result.data) {
-        for (const buddy of category.buddyList || []) {
-          friends.push({
-            user_id: Number(buddy.uin) || 0,
-            nickname: buddy.nick || buddy.remark || "",
-            remark: buddy.remark || "",
-          });
-        }
-      }
+    for (const [uin, info] of cached) {
+      friends.push({
+        user_id: Number(uin) || 0,
+        nickname: info.nick || info.remark || "",
+        remark: info.remark || "",
+      });
     }
     return friends;
-  } catch (e) {
-    console.error("[onebot-actions] get_friend_list error:", e.message);
-    return [];
   }
+  // Cache empty — trigger a refresh (result arrives via listener)
+  try { bridge.session?.getBuddyService().getBuddyList(true); } catch {}
+  return [];
 };
 
 handlers.get_stranger_info = async (params, bridge) => {
@@ -139,11 +134,13 @@ handlers.get_group_member_list = async (params, bridge, eventTranslator) => {
   const groupId = String(params.group_id || "");
   if (!bridge.session) return [];
 
-  // Trigger a fetch to populate cache
-  await fetchGroupMembersAndWait(bridge, groupId, eventTranslator);
-
-  // Return from cache
-  const cached = eventTranslator._groupMembers.get(groupId);
+  // Return from cache if populated (preloaded on startup)
+  let cached = eventTranslator._groupMembers.get(groupId);
+  if (!cached || cached.size === 0) {
+    // Cache miss — trigger fetch and wait for listener callback
+    await fetchGroupMembersAndWait(bridge, groupId, eventTranslator);
+    cached = eventTranslator._groupMembers.get(groupId);
+  }
   if (!cached || cached.size === 0) return [];
 
   const members = [];
@@ -163,9 +160,12 @@ handlers.get_group_member_info = async (params, bridge, eventTranslator) => {
   // Check cache first
   let member = eventTranslator.getGroupMember(groupId, userId);
   if (!member) {
-    // Trigger fetch and wait
-    await fetchGroupMembersAndWait(bridge, groupId, eventTranslator);
-    member = eventTranslator.getGroupMember(groupId, userId);
+    // Only fetch if the group's member cache is empty (not yet loaded)
+    const groupCache = eventTranslator._groupMembers.get(groupId);
+    if (!groupCache || groupCache.size === 0) {
+      await fetchGroupMembersAndWait(bridge, groupId, eventTranslator);
+      member = eventTranslator.getGroupMember(groupId, userId);
+    }
   }
   if (member) {
     return formatMember({
