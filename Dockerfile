@@ -1,4 +1,4 @@
-# Base image with QQ pre-installed
+# Base image with QQ pre-installed (external image name, not controlled by us)
 FROM docker.1ms.run/linyuchen/pmhq:latest
 
 # Upgrade QQ to latest version (base image ships an outdated QQ that gets rejected)

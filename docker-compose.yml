@@ -33,9 +33,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      # LLOneBot env vars (names required by LLOneBot)
-      - PMHQ_HOST=qq-bridge
-      - PMHQ_PORT=13000
+      # LLOneBot bridge env vars (env names are mandated by LLOneBot)
+      - PMHQ_HOST=qq-bridge  # required env name by LLOneBot
+      - PMHQ_PORT=13000      # required env name by LLOneBot
       - ENABLE_ONEBOT_WS=false
       - ENABLE_ONEBOT_HTTP=false
       - ONEBOT_WS_PORT=3001
