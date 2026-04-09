@@ -48,7 +48,7 @@ Bot Framework (Yunzai / Koishi) ←→ Waylay (OneBot v11) ←→ wrapper.node �
 ### Option 1: Docker (Recommended)
 
 ```bash
-git clone https://github.com/Micuks/waylay.git
+git clone https://github.com/Micuks/waylay-qq-bridge.git
 cd waylay
 docker compose up -d --build
 ```
@@ -57,7 +57,7 @@ Then visit `http://localhost:13000/qrcode` to scan the QR code and log in.
 
 ### Option 2: GitHub Releases
 
-Download the latest release from [Releases](https://github.com/Micuks/waylay/releases), then:
+Download the latest release from [Releases](https://github.com/Micuks/waylay-qq-bridge/releases), then:
 
 ```bash
 cd waylay
@@ -238,9 +238,9 @@ Waylay:
 | `face` | ✅ | ✅ | QQ emoji |
 | `image` | ✅ | ✅ | Image (base64/URL/local path) |
 | `reply` | ✅ | ✅ | Reply |
-| `record` | ✅ | — | Voice |
-| `video` | ✅ | — | Video |
-| `file` | ✅ | — | File |
+| `record` | ✅ | ✅ | Voice |
+| `video` | ✅ | ✅ | Video |
+| `file` | ✅ | ✅ | File |
 | `json` | ✅ | ✅ | JSON card |
 | `forward` | ✅ | ✅ | Forward message |
 | `dice` | ✅ | ✅ | Dice |
