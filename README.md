@@ -26,9 +26,24 @@ A headless bridge for NTQQ with built-in OneBot v11 support. An open-source Node
 | **Requires QQ** | Yes | Yes | Yes (+ LiteLoader) | No |
 | **Status** | Active | Active | Active | Archived (2025) |
 
+### Response latency (waylay vs LLOneBot, 10 rounds avg)
+
+| Action | waylay | LLOneBot | Ratio |
+|--------|--------|----------|-------|
+| get_login_info | **0.7ms** | 6.3ms | 9x |
+| get_friend_list | **1.0ms** | 47.9ms | **48x** |
+| get_group_list | **0.8ms** | 27.3ms | **34x** |
+| get_group_info | **0.6ms** | 28.4ms | **47x** |
+| get_group_member_list | **1.0ms** | 10.2ms | **10x** |
+| get_group_member_info | **0.5ms** | 12.0ms | **24x** |
+| send_group_msg | 403ms | 457ms | 1.1x |
+
+All query actions are sub-millisecond thanks to event-driven caching. `send_group_msg` is equal — both are bounded by QQ server round-trip.
+
 ### Key advantages
 
 - **Minimal footprint**: 2,948 lines of plain JavaScript, 1 dependency (`ws`), 208 KB node_modules. No TypeScript compilation, no bundler, no monorepo, no framework overhead.
+- **Sub-ms queries**: All read actions served from in-memory cache populated by kernel listener events. No database, no API round-trip per query.
 - **Low memory**: ~150 MB runtime (includes QQ kernel). NapCat and LLOneBot typically consume 300+ MB due to additional abstraction layers, logging frameworks (winston), web frameworks (express/hono), database engines (SQLite), and frontend UI (React/Vite).
 - **Zero abstraction tax**: Calls `wrapper.node` APIs directly without intermediate layers. No dependency injection (inversify), no plugin system (cordis), no protobuf codegen. The call path from OneBot action to QQ kernel is ~3 function calls deep.
 - **Single-process**: No master/worker split, no WebUI server, no separate database process. One Electron process handles everything.
