@@ -169,9 +169,6 @@ class EventTranslator {
         events.push(...tipEvents);
         continue;
       }
-      // Skip non-normal messages
-      if (msg.msgType !== 1 && msg.msgType !== 2 && msg.msgType !== 3) continue;
-
       const shortId = this.createShortId(msg.msgId);
       const segments = ntToOneBot(msg.elements, msg);
       const rawMessage = segmentsToRawMessage(segments);
