@@ -7,9 +7,9 @@ RUN apt-get update && apt-get install -y curl && \
     dpkg -i /tmp/qq.deb || apt-get install -f -y && \
     rm -f /tmp/qq.deb
 
-# Install Node.js 22 (needed for npm install of ws package)
+# Install Node.js 22 and ffmpeg (for video/audio metadata)
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y nodejs && \
+    apt-get install -y nodejs ffmpeg && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy bridge source

@@ -175,6 +175,25 @@ handlers.get_group_member_info = async (params, bridge, eventTranslator) => {
   return formatMember({ uin: userId }, groupId);
 };
 
+/** Register a media file with NTQQ — returns the expected path, or null. */
+function registerMedia(msgService, md5, fileName, elementType) {
+  const pathInfo = {
+    md5HexStr: md5 || "",
+    fileName: fileName || "",
+    elementType,
+    elementSubType: 0,
+    thumbSize: 0,
+    needCreate: true,
+    downloadType: 1,
+    file_uuid: "",
+  };
+  const mediaPath = msgService.getRichMediaFilePathForGuild(pathInfo);
+  if (mediaPath) {
+    fs.mkdirSync(path.dirname(mediaPath), { recursive: true });
+  }
+  return mediaPath || null;
+}
+
 function formatMember(m, groupId) {
   const role = m.role === 4 ? "owner" : m.role === 3 ? "admin" : "member";
   return {
@@ -299,32 +318,54 @@ async function sendMessage(peer, message, bridge, eventTranslator) {
   const elements = oneBotToNt(message, uidResolver);
   if (!elements.length) throw new Error("Empty message");
 
-  // Register image files with NTQQ and copy to the expected path
+  // Register media files with NTQQ and copy to the expected paths
+  const msgService = bridge.session.getMsgService();
   for (const el of elements) {
-    if (el.elementType === 2 && el.picElement?.sourcePath) {
-      try {
-        const msgService = bridge.session.getMsgService();
-        const pathInfo = {
-          md5HexStr: el.picElement.md5HexStr || "",
-          fileName: el.picElement.fileName || "",
-          elementType: 2,
-          elementSubType: 0,
-          thumbSize: 0,
-          needCreate: true,
-          downloadType: 1,
-          file_uuid: "",
-        };
-        let mediaPath = msgService.getRichMediaFilePathForGuild(pathInfo);
+    try {
+      if (el.elementType === 2 && el.picElement?.sourcePath) {
+        // Image
+        const mediaPath = registerMedia(msgService, el.picElement.md5HexStr, el.picElement.fileName, 2);
         if (mediaPath) {
-          const dir = path.dirname(mediaPath);
-          fs.mkdirSync(dir, { recursive: true });
           fs.copyFileSync(el.picElement.sourcePath, mediaPath);
           el.picElement.sourcePath = mediaPath;
           console.log("[onebot-actions] Image registered at:", mediaPath);
         }
-      } catch (e) {
-        console.warn("[onebot-actions] Image registration error:", e.message);
+      } else if (el.elementType === 5 && el.videoElement?.filePath) {
+        // Video — register video file and thumbnail
+        const mediaPath = registerMedia(msgService, el.videoElement.videoMd5, el.videoElement.fileName, 5);
+        if (mediaPath) {
+          fs.copyFileSync(el.videoElement.filePath, mediaPath);
+          el.videoElement.filePath = mediaPath;
+          // Place thumbnail at the Thumb path
+          const origThumbPath = el.videoElement.thumbPath?.get(0);
+          if (origThumbPath) {
+            const thumbDir = path.dirname(mediaPath).replace(/[/\\]Ori[/\\]?/, path.sep + "Thumb" + path.sep);
+            const thumbFilePath = path.join(thumbDir, `${el.videoElement.videoMd5}_0.png`);
+            fs.mkdirSync(path.dirname(thumbFilePath), { recursive: true });
+            fs.copyFileSync(origThumbPath, thumbFilePath);
+            el.videoElement.thumbPath = new Map([[0, thumbFilePath]]);
+          }
+          console.log("[onebot-actions] Video registered at:", mediaPath);
+        }
+      } else if (el.elementType === 4 && el.pttElement?.filePath) {
+        // Voice/PTT
+        const mediaPath = registerMedia(msgService, el.pttElement.md5HexStr, el.pttElement.fileName, 4);
+        if (mediaPath) {
+          fs.copyFileSync(el.pttElement.filePath, mediaPath);
+          el.pttElement.filePath = mediaPath;
+          console.log("[onebot-actions] Voice registered at:", mediaPath);
+        }
+      } else if (el.elementType === 3 && el.fileElement?.filePath) {
+        // File
+        const mediaPath = registerMedia(msgService, null, el.fileElement.fileName, 3);
+        if (mediaPath) {
+          fs.copyFileSync(el.fileElement.filePath, mediaPath);
+          el.fileElement.filePath = mediaPath;
+          console.log("[onebot-actions] File registered at:", mediaPath);
+        }
       }
+    } catch (e) {
+      console.warn(`[onebot-actions] Media registration error (type ${el.elementType}):`, e.message);
     }
   }
 
@@ -597,8 +638,28 @@ handlers.get_group_file_system_info = async () => ({});
 handlers.get_group_root_files = async () => ({ files: [], folders: [] });
 handlers.get_group_files_by_folder = async () => ({ files: [], folders: [] });
 handlers.get_group_file_url = async () => ({ url: "" });
-handlers.upload_group_file = async () => null;
-handlers.upload_private_file = async () => null;
+handlers.upload_group_file = async (params, bridge, eventTranslator) => {
+  const groupId = String(params.group_id || "");
+  const file = params.file || "";
+  const name = params.name || path.basename(file);
+  const peer = { chatType: 2, peerUid: groupId, guildId: "" };
+  return await sendMessage(peer, [{ type: "file", data: { file, name } }], bridge, eventTranslator);
+};
+
+handlers.upload_private_file = async (params, bridge, eventTranslator) => {
+  const userId = String(params.user_id || "");
+  let peerUid = eventTranslator.getUidByUin(userId);
+  if (!peerUid) {
+    try {
+      const r = await bridge.session.getProfileService().getUidByUin("FriendsServiceImpl", [userId]);
+      peerUid = r?.uidInfo?.get(userId) || userId;
+    } catch {}
+  }
+  const file = params.file || "";
+  const name = params.name || path.basename(file);
+  const peer = { chatType: 1, peerUid: peerUid || userId, guildId: "" };
+  return await sendMessage(peer, [{ type: "file", data: { file, name } }], bridge, eventTranslator);
+};
 handlers.delete_group_file = async () => null;
 handlers.create_group_file_folder = async () => null;
 handlers.set_friend_add_request = async (params, bridge) => {

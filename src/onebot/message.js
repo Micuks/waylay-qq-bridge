@@ -24,39 +24,38 @@ const TEMP_DIR = "/tmp/waylay-media";
 try { fs.mkdirSync(TEMP_DIR, { recursive: true }); } catch {}
 
 /**
- * Resolve a OneBot image file reference to a local file path.
+ * Resolve a file reference to a local path with metadata.
  * Supports: base64://..., http(s)://..., file:///..., or local path.
+ * Returns { path, size, md5 } plus optional image dimensions.
  */
-function resolveImageFile(file) {
+function resolveMediaFile(file, defaultExt) {
   if (!file) return null;
 
-  // base64 encoded image
+  // base64 encoded
   if (file.startsWith("base64://")) {
     const b64 = file.slice(9);
     const buf = Buffer.from(b64, "base64");
     const md5 = crypto.createHash("md5").update(buf).digest("hex");
-    const ext = detectImageExt(buf);
+    const ext = defaultExt || detectImageExt(buf);
     const filePath = path.join(TEMP_DIR, `${md5}.${ext}`);
     fs.writeFileSync(filePath, buf);
-    const dim = getImageDimensions(buf);
-    return { path: filePath, size: buf.length, md5, ...dim };
+    return { path: filePath, size: buf.length, md5 };
   }
 
   // HTTP(S) URL — download with curl
   if (file.startsWith("http://") || file.startsWith("https://")) {
-    const md5 = crypto.createHash("md5").update(file).digest("hex");
-    const filePath = path.join(TEMP_DIR, `${md5}.tmp`);
+    const urlMd5 = crypto.createHash("md5").update(file).digest("hex");
+    const filePath = path.join(TEMP_DIR, `${urlMd5}.tmp`);
     try {
-      execSync(`curl -fsSL -o "${filePath}" "${file}"`, { timeout: 30000 });
+      execSync(`curl -fsSL -o "${filePath}" "${file}"`, { timeout: 60000 });
       const buf = fs.readFileSync(filePath);
-      const realMd5 = crypto.createHash("md5").update(buf).digest("hex");
-      const ext = detectImageExt(buf);
-      const finalPath = path.join(TEMP_DIR, `${realMd5}.${ext}`);
+      const md5 = crypto.createHash("md5").update(buf).digest("hex");
+      const ext = defaultExt || detectExtFromName(file) || detectImageExt(buf);
+      const finalPath = path.join(TEMP_DIR, `${md5}.${ext}`);
       if (finalPath !== filePath) fs.renameSync(filePath, finalPath);
-      const dim = getImageDimensions(buf);
-      return { path: finalPath, size: buf.length, md5: realMd5, ...dim };
+      return { path: finalPath, size: buf.length, md5 };
     } catch (e) {
-      console.error("[message] Failed to download image:", e.message);
+      console.error("[message] Failed to download file:", e.message);
       return null;
     }
   }
@@ -80,6 +79,20 @@ function resolveImageFile(file) {
   }
 
   return null;
+}
+
+/** Wrapper for image files — adds dimensions */
+function resolveImageFile(file) {
+  const resolved = resolveMediaFile(file);
+  if (!resolved) return null;
+  const buf = fs.readFileSync(resolved.path);
+  const dim = getImageDimensions(buf);
+  return { ...resolved, ...dim };
+}
+
+function detectExtFromName(name) {
+  const m = name.match(/\.(\w{2,5})(?:[?#]|$)/);
+  return m ? m[1].toLowerCase() : null;
 }
 
 function detectImageExt(buf) {
@@ -360,6 +373,81 @@ function convertSegment(seg, uidResolver) {
       };
     }
 
+    case "video": {
+      const fileRef = seg.data?.file || "";
+      const resolved = resolveMediaFile(fileRef, "mp4");
+      if (!resolved) {
+        console.warn("[message] Could not resolve video:", fileRef.substring(0, 80));
+        return null;
+      }
+      // Generate thumbnail if ffmpeg is available, otherwise use placeholder
+      const thumbInfo = generateVideoThumb(resolved.path, resolved.md5);
+      return {
+        elementType: 5,
+        elementId: "",
+        videoElement: {
+          fileName: path.basename(resolved.path),
+          filePath: resolved.path,
+          videoMd5: resolved.md5,
+          thumbMd5: thumbInfo.md5,
+          fileTime: getVideoDuration(resolved.path),
+          thumbPath: new Map([[0, thumbInfo.path]]),
+          thumbSize: thumbInfo.size,
+          thumbWidth: thumbInfo.width || 1920,
+          thumbHeight: thumbInfo.height || 1080,
+          fileSize: String(resolved.size),
+        },
+      };
+    }
+
+    case "record": {
+      const fileRef = seg.data?.file || "";
+      const resolved = resolveMediaFile(fileRef, "amr");
+      if (!resolved) {
+        console.warn("[message] Could not resolve record:", fileRef.substring(0, 80));
+        return null;
+      }
+      return {
+        elementType: 4,
+        elementId: "",
+        pttElement: {
+          fileName: path.basename(resolved.path),
+          filePath: resolved.path,
+          md5HexStr: resolved.md5,
+          fileSize: String(resolved.size),
+          duration: getAudioDuration(resolved.path),
+          formatType: 1,
+          voiceType: 1,
+          voiceChangeType: 0,
+          canConvert2Text: true,
+          waveAmplitudes: [0, 18, 9, 23, 16, 17, 16, 15, 44, 17, 24, 20, 14, 15, 17],
+          fileSubId: "",
+          playState: 1,
+          autoConvertText: 0,
+        },
+      };
+    }
+
+    case "file": {
+      const fileRef = seg.data?.file || "";
+      const name = seg.data?.name || "";
+      const resolved = resolveMediaFile(fileRef);
+      if (!resolved) {
+        console.warn("[message] Could not resolve file:", fileRef.substring(0, 80));
+        return null;
+      }
+      return {
+        elementType: 3,
+        elementId: "",
+        fileElement: {
+          fileName: name || path.basename(resolved.path),
+          filePath: resolved.path,
+          fileSize: String(resolved.size),
+          folderId: "",
+        },
+      };
+    }
+
     case "json":
       return {
         elementType: 10,
@@ -433,6 +521,58 @@ function convertSegment(seg, uidResolver) {
 
     default:
       return null;
+  }
+}
+
+// 1x1 transparent PNG placeholder for video thumbnails when ffmpeg unavailable
+const PLACEHOLDER_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAB" +
+  "Nl7BcQAAAABJRU5ErkJggg==", "base64"
+);
+
+/** Generate a video thumbnail. Uses ffmpeg if available, otherwise a placeholder. */
+function generateVideoThumb(videoPath, videoMd5) {
+  const thumbPath = path.join(TEMP_DIR, `${videoMd5}_thumb.png`);
+  try {
+    execSync(
+      `ffmpeg -y -i "${videoPath}" -ss 00:00:01 -vframes 1 -vf scale=320:-1 "${thumbPath}" 2>/dev/null`,
+      { timeout: 10000 }
+    );
+    const buf = fs.readFileSync(thumbPath);
+    const md5 = crypto.createHash("md5").update(buf).digest("hex");
+    const dim = getImageDimensions(buf);
+    return { path: thumbPath, size: buf.length, md5, ...dim };
+  } catch {
+    // ffmpeg not available — write placeholder
+    fs.writeFileSync(thumbPath, PLACEHOLDER_PNG);
+    const md5 = crypto.createHash("md5").update(PLACEHOLDER_PNG).digest("hex");
+    return { path: thumbPath, size: PLACEHOLDER_PNG.length, md5, width: 1, height: 1 };
+  }
+}
+
+/** Get video duration in seconds via ffprobe. Returns default if unavailable. */
+function getVideoDuration(filePath) {
+  try {
+    const out = execSync(
+      `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}" 2>/dev/null`,
+      { timeout: 5000 }
+    ).toString().trim();
+    return Math.round(parseFloat(out)) || 15;
+  } catch {
+    return 15;
+  }
+}
+
+/** Get audio duration in seconds via ffprobe. Returns default if unavailable. */
+function getAudioDuration(filePath) {
+  try {
+    const out = execSync(
+      `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}" 2>/dev/null`,
+      { timeout: 5000 }
+    ).toString().trim();
+    return Math.max(1, Math.round(parseFloat(out))) || 5;
+  } catch {
+    return 5;
   }
 }
 
