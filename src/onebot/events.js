@@ -205,6 +205,7 @@ class EventTranslator {
             title: "",
           },
         };
+        event._ntMsgSeq = msg.msgSeq || "0";
         this.cacheMsg(shortId, event);
         events.push(event);
 
@@ -240,6 +241,7 @@ class EventTranslator {
             age: 0,
           },
         };
+        event._ntMsgSeq = msg.msgSeq || "0";
         this.cacheMsg(shortId, event);
         events.push(event);
       }

@@ -318,6 +318,23 @@ async function sendMessage(peer, message, bridge, eventTranslator) {
   const elements = oneBotToNt(message, uidResolver);
   if (!elements.length) throw new Error("Empty message");
 
+  // Resolve reply elements: convert OneBot short ID -> real NTQQ msgId
+  for (const el of elements) {
+    if (el.elementType === 7 && el.replyElement) {
+      const shortId = Number(el.replyElement.replayMsgId);
+      const realMsgId = eventTranslator.resolveShortId(shortId);
+      if (realMsgId) {
+        el.replyElement.replayMsgId = realMsgId;
+      }
+      const cached = eventTranslator.getCachedMsg(shortId);
+      if (cached) {
+        el.replyElement.replayMsgSeq = cached._ntMsgSeq || "0";
+        el.replyElement.senderUin = String(cached.sender?.user_id || "0");
+        el.replyElement.senderUinStr = String(cached.sender?.user_id || "0");
+      }
+    }
+  }
+
   // Register media files with NTQQ and copy to the expected paths
   const msgService = bridge.session.getMsgService();
   for (const el of elements) {
