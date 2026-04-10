@@ -45,22 +45,57 @@ Bot Framework (Yunzai / Koishi) ←→ Waylay (OneBot v11) ←→ wrapper.node �
 
 ## Installation
 
-### Option 1: Docker (Recommended)
+### Option 1: Docker Hub (Recommended)
 
 ```bash
-git clone https://github.com/Micuks/waylay-qq-bridge.git
-cd waylay
-docker compose up -d --build
+docker run -d --name waylay --privileged \
+  -p 13000:13000 -p 3001:3001 \
+  micuks/waylay:latest
 ```
 
 Then visit `http://localhost:13000/qrcode` to scan the QR code and log in.
 
-### Option 2: GitHub Releases
-
-Download the latest release from [Releases](https://github.com/Micuks/waylay-qq-bridge/releases), then:
+With parameters (quick login + reverse WS):
 
 ```bash
-cd waylay
+docker run -d --name waylay --privileged \
+  -p 13000:13000 -p 3001:3001 \
+  -e AUTO_LOGIN_QQ=123456789 \
+  -e ONEBOT_WS_PORT=3001 \
+  -e 'ONEBOT_WS_REVERSE_URLS=["ws://host.docker.internal:2536/OneBotv11"]' \
+  --add-host=host.docker.internal:host-gateway \
+  -v waylay_qq:/root/.config/QQ \
+  micuks/waylay:latest
+```
+
+Or use Docker Compose:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/Micuks/waylay-qq-bridge/master/docker-compose.yml
+# Edit docker-compose.yml as needed
+docker compose up -d
+```
+
+### Option 2: Install Script (Bare-metal Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Micuks/waylay-qq-bridge/master/install.sh | sudo bash
+```
+
+After installation:
+
+```bash
+sudo systemctl start waylay    # Start
+sudo systemctl enable waylay   # Auto-start on boot
+curl http://localhost:13000/qrcode  # View login QR code
+journalctl -u waylay -f        # View logs
+```
+
+### Option 3: Build from Source
+
+```bash
+git clone https://github.com/Micuks/waylay-qq-bridge.git
+cd waylay-qq-bridge
 docker compose up -d --build
 ```
 
