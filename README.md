@@ -241,6 +241,18 @@ Waylay:
 | `set_group_add_request` | 处理加群请求 |
 | `group_poke` | 群戳一戳 |
 
+#### 群文件
+
+| Action | 说明 |
+|--------|------|
+| `get_group_file_system_info` | 获取群文件系统信息 |
+| `get_group_root_files` | 获取群根目录文件列表 |
+| `get_group_files_by_folder` | 获取群子目录文件列表 |
+| `upload_group_file` | 上传群文件 |
+| `delete_group_file` | 删除群文件 |
+| `create_group_file_folder` | 创建群文件夹 |
+| `delete_group_folder` | 删除群文件夹 |
+
 #### 媒体
 
 | Action | 说明 |

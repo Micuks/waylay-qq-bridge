@@ -454,48 +454,105 @@ handlers.get_msg = async (params, bridge, eventTranslator) => {
 
 // ---- Forward messages ----
 
+/**
+ * Normalize a single segment to standard {type, data} format.
+ * Handles flat segments like {type:"image", file:"..."} -> {type:"image", data:{file:"..."}}
+ */
+function normalizeSegment(seg) {
+  if (typeof seg === "string") return { type: "text", data: { text: seg } };
+  if (!seg || !seg.type) return null;
+  // Already has a data object — standard format
+  if (seg.data && typeof seg.data === "object") return seg;
+  // Flat format: {type:"image", file:"...", ...} -> {type:"image", data:{file:"...", ...}}
+  const { type, ...rest } = seg;
+  return { type, data: rest };
+}
+
+/**
+ * Extract sendable message content from a forward node.
+ * Supports multiple formats used by different bot frameworks:
+ *   - Standard OneBot v11: {type:"node", data:{content:[...segments]}}
+ *   - Yunzai/TRSS:         {message: segment_or_array, nickname, user_id}
+ *   - Flat content:        {content: segment_or_array, ...}
+ */
+function extractNodeContent(node) {
+  if (!node) return null;
+
+  // Standard OneBot v11 node format
+  let raw = null;
+  if (node.type === "node" && node.data) {
+    raw = node.data.content || node.data.message;
+  }
+  // Yunzai format: {message: ..., nickname, user_id}
+  if (raw == null && node.message !== undefined) {
+    raw = node.message;
+  }
+  // Alternative: {content: [...]}
+  if (raw == null && node.content !== undefined) {
+    raw = node.content;
+  }
+
+  if (raw == null) return null;
+
+  // Normalize to array
+  if (typeof raw === "string") return [{ type: "text", data: { text: raw } }];
+  const arr = Array.isArray(raw) ? raw : [raw];
+  return arr.map(normalizeSegment).filter(Boolean);
+}
+
 handlers.send_group_forward_msg = async (params, bridge, eventTranslator) => {
-  // Forward messages require creating a multi-forward message
-  // This is complex and requires NT API's multiForwardMsg
-  // For now, send each node as a separate message as a fallback
   const groupId = String(params.group_id || "");
   const messages = params.messages || [];
   const peer = { chatType: 2, peerUid: groupId, guildId: "" };
 
+  let lastMsgId = 0;
   for (const node of messages) {
-    if (node.type !== "node" || !node.data?.content) continue;
+    const content = extractNodeContent(node);
+    if (!content || content.length === 0) {
+      console.warn("[onebot-actions] send_group_forward_msg: skipped node:", JSON.stringify(node)?.substring(0, 200));
+      continue;
+    }
     try {
-      const elements = await oneBotToNt(node.data.content);
-      if (elements.length) {
-        await bridge.session.getMsgService().sendMsg("0", peer, elements, new Map());
-      }
+      const result = await sendMessage(peer, content, bridge, eventTranslator);
+      if (result?.message_id) lastMsgId = result.message_id;
     } catch (e) {
       console.error("[onebot-actions] send_group_forward_msg node error:", e.message);
     }
   }
-  return { message_id: 0 };
+  return { message_id: lastMsgId };
 };
 
 handlers.send_private_forward_msg = async (params, bridge, eventTranslator) => {
   const userId = String(params.user_id || "");
-  let peerUid = userId;
-  try {
-    const result = await bridge.session.getUidByUin("FriendsServiceImpl", [userId]);
-    peerUid = result?.uidInfo?.get(userId) || userId;
-  } catch {}
+  let peerUid = eventTranslator.getUidByUin(userId);
+  if (!peerUid) {
+    try {
+      const result = await bridge.session.getProfileService().getUidByUin("FriendsServiceImpl", [userId]);
+      peerUid = result?.uidInfo?.get(userId) || null;
+    } catch {}
+  }
+  if (!peerUid) {
+    console.warn("[onebot-actions] send_private_forward_msg: cannot resolve UID for:", userId);
+    peerUid = userId;
+  }
   const peer = { chatType: 1, peerUid, guildId: "" };
   const messages = params.messages || [];
 
+  let lastMsgId = 0;
   for (const node of messages) {
-    if (node.type !== "node" || !node.data?.content) continue;
+    const content = extractNodeContent(node);
+    if (!content || content.length === 0) {
+      console.warn("[onebot-actions] send_private_forward_msg: skipped node:", JSON.stringify(node)?.substring(0, 200));
+      continue;
+    }
     try {
-      const elements = await oneBotToNt(node.data.content);
-      if (elements.length) {
-        await bridge.session.getMsgService().sendMsg("0", peer, elements, new Map());
-      }
-    } catch {}
+      const result = await sendMessage(peer, content, bridge, eventTranslator);
+      if (result?.message_id) lastMsgId = result.message_id;
+    } catch (e) {
+      console.error("[onebot-actions] send_private_forward_msg node error:", e.message);
+    }
   }
-  return { message_id: 0 };
+  return { message_id: lastMsgId };
 };
 
 handlers.get_forward_msg = async (params, bridge) => {
@@ -726,9 +783,113 @@ handlers.get_group_honor_info = async () => ({});
 handlers.get_essence_msg_list = async () => ({ msg_list: [] });
 handlers.set_essence_msg = async () => null;
 handlers.delete_essence_msg = async () => null;
-handlers.get_group_file_system_info = async () => ({});
-handlers.get_group_root_files = async () => ({ files: [], folders: [] });
-handlers.get_group_files_by_folder = async () => ({ files: [], folders: [] });
+/**
+ * Helper: call getGroupFileList and wait for the onGroupFileInfoUpdate callback.
+ * Returns { files, folders } in OneBot v11 format.
+ */
+async function fetchGroupFiles(bridge, eventTranslator, groupCode, folderId) {
+  const richMediaService = bridge.session.getRichMediaService();
+  const param = {
+    sortType: 1,
+    fileCount: 100,
+    startIndex: 0,
+    sortOrder: 2,
+    showOnlinedocFolder: 0,
+  };
+  // Only include folderId when listing a specific subfolder;
+  // omitting it returns root files (empty string causes NTQQ to return nothing)
+  if (folderId) param.folderId = folderId;
+  const reqId = richMediaService.getGroupFileList(groupCode, param);
+  // Register the wait immediately — the event fires asynchronously via the native callback
+  const data = await eventTranslator.waitForGroupFileInfo(Number(reqId), 10000);
+  if (data.retCode !== 0) {
+    throw new Error(`getGroupFileList failed: retCode=${data.retCode}`);
+  }
+  const files = [];
+  const folders = [];
+  for (const item of data.item || []) {
+    if (item.fileInfo) {
+      const f = item.fileInfo;
+      files.push({
+        group_id: Number(groupCode) || 0,
+        file_id: f.fileId || "",
+        file_name: f.fileName || "",
+        busid: f.busId || 0,
+        file_size: Number(f.fileSize) || 0,
+        upload_time: Number(f.uploadTime) || 0,
+        dead_time: Number(f.deadTime) || 0,
+        modify_time: Number(f.modifyTime) || 0,
+        download_times: Number(f.downloadTimes) || 0,
+        uploader: Number(f.uploaderUin) || 0,
+        uploader_name: f.uploaderName || "",
+      });
+    }
+    if (item.folderInfo) {
+      const d = item.folderInfo;
+      folders.push({
+        group_id: Number(groupCode) || 0,
+        folder_id: d.folderId || "",
+        folder_name: d.folderName || "",
+        create_time: Number(d.createTime) || 0,
+        creator: Number(d.creatorUin) || 0,
+        creator_name: d.creatorName || "",
+        total_file_count: Number(d.totalFileCount) || 0,
+      });
+    }
+  }
+  return { files, folders };
+}
+
+handlers.get_group_file_system_info = async (params, bridge, eventTranslator) => {
+  if (!bridge.session) return {};
+  const groupCode = String(params.group_id || "");
+  if (!groupCode) return {};
+  try {
+    const richMediaService = bridge.session.getRichMediaService();
+    const [spaceResult, { files }] = await Promise.all([
+      withTimeout(richMediaService.getGroupSpace(groupCode), 10000),
+      fetchGroupFiles(bridge, eventTranslator, groupCode),
+    ]);
+    const space = spaceResult?.groupSpaceResult || {};
+    return {
+      file_count: files.length,
+      limit_count: 10000,
+      used_space: Number(space.usedSpace) || 0,
+      total_space: Number(space.totalSpace) || 0,
+    };
+  } catch (e) {
+    console.warn("[onebot-actions] get_group_file_system_info error:", e.message);
+    return {};
+  }
+};
+
+handlers.get_group_root_files = async (params, bridge, eventTranslator) => {
+  if (!bridge.session) return { files: [], folders: [] };
+  const groupCode = String(params.group_id || "");
+  if (!groupCode) return { files: [], folders: [] };
+  try {
+    return await fetchGroupFiles(bridge, eventTranslator, groupCode);
+  } catch (e) {
+    console.warn("[onebot-actions] get_group_root_files error:", e.message);
+    return { files: [], folders: [] };
+  }
+};
+
+handlers.get_group_files_by_folder = async (params, bridge, eventTranslator) => {
+  if (!bridge.session) return { files: [], folders: [] };
+  const groupCode = String(params.group_id || "");
+  const folderId = String(params.folder_id || "");
+  if (!groupCode) return { files: [], folders: [] };
+  try {
+    return await fetchGroupFiles(bridge, eventTranslator, groupCode, folderId);
+  } catch (e) {
+    console.warn("[onebot-actions] get_group_files_by_folder error:", e.message);
+    return { files: [], folders: [] };
+  }
+};
+
+// get_group_file_url: NTQQ wrapper.node does not expose a direct file URL API.
+// Returns empty — callers should use upload_group_file / download via the QQ client.
 handlers.get_group_file_url = async () => ({ url: "" });
 handlers.upload_group_file = async (params, bridge, eventTranslator) => {
   const groupId = String(params.group_id || "");
@@ -752,8 +913,57 @@ handlers.upload_private_file = async (params, bridge, eventTranslator) => {
   const peer = { chatType: 1, peerUid: peerUid || userId, guildId: "" };
   return await sendMessage(peer, [{ type: "file", data: { file, name } }], bridge, eventTranslator);
 };
-handlers.delete_group_file = async () => null;
-handlers.create_group_file_folder = async () => null;
+handlers.delete_group_file = async (params, bridge) => {
+  if (!bridge.session) return null;
+  const groupCode = String(params.group_id || "");
+  const fileId = String(params.file_id || "");
+  const busId = params.busid || params.bus_id || 102;
+  if (!groupCode || !fileId) return null;
+  try {
+    const richMediaService = bridge.session.getRichMediaService();
+    await withTimeout(
+      richMediaService.deleteGroupFile(groupCode, [busId], [fileId]),
+      10000
+    );
+  } catch (e) {
+    console.warn("[onebot-actions] delete_group_file error:", e.message);
+  }
+  return null;
+};
+
+handlers.create_group_file_folder = async (params, bridge) => {
+  if (!bridge.session) return null;
+  const groupCode = String(params.group_id || "");
+  const folderName = String(params.name || params.folder_name || "");
+  if (!groupCode || !folderName) return null;
+  try {
+    const richMediaService = bridge.session.getRichMediaService();
+    await withTimeout(
+      richMediaService.createGroupFolder(groupCode, folderName),
+      10000
+    );
+  } catch (e) {
+    console.warn("[onebot-actions] create_group_file_folder error:", e.message);
+  }
+  return null;
+};
+
+handlers.delete_group_folder = async (params, bridge) => {
+  if (!bridge.session) return null;
+  const groupCode = String(params.group_id || "");
+  const folderId = String(params.folder_id || "");
+  if (!groupCode || !folderId) return null;
+  try {
+    const richMediaService = bridge.session.getRichMediaService();
+    await withTimeout(
+      richMediaService.deleteGroupFolder(groupCode, folderId),
+      10000
+    );
+  } catch (e) {
+    console.warn("[onebot-actions] delete_group_folder error:", e.message);
+  }
+  return null;
+};
 handlers.set_friend_add_request = async (params, bridge) => {
   if (!bridge.session) return null;
   const flag = String(params.flag || "");

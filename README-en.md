@@ -237,6 +237,18 @@ Waylay:
 | `set_group_add_request` | Handle group request |
 | `group_poke` | Group poke |
 
+#### Group Files
+
+| Action | Description |
+|--------|-------------|
+| `get_group_file_system_info` | Get group file system info |
+| `get_group_root_files` | List root directory files |
+| `get_group_files_by_folder` | List files in subfolder |
+| `upload_group_file` | Upload group file |
+| `delete_group_file` | Delete group file |
+| `create_group_file_folder` | Create group folder |
+| `delete_group_folder` | Delete group folder |
+
 #### Media
 
 | Action | Description |

@@ -27,6 +27,8 @@ class EventTranslator {
     // Track buddy list for friend_add detection
     this._knownBuddyUins = new Set();
     this._buddyListInitialized = false;
+    // Pending group file requests: reqId -> { resolve, timer }
+    this._pendingFileReqs = new Map();
   }
 
   /** Record a UIN<->UID mapping from observed data */
@@ -104,6 +106,16 @@ class EventTranslator {
    */
   translate(listenerName, eventName, data) {
     try {
+      // Dispatch group file info callback regardless of which listener fires it
+      if (eventName === "onGroupFileInfoUpdate") {
+        const reqId = data?.reqId;
+        if (reqId != null && this._pendingFileReqs.has(reqId)) {
+          const { resolve, timer } = this._pendingFileReqs.get(reqId);
+          clearTimeout(timer);
+          this._pendingFileReqs.delete(reqId);
+          resolve(data);
+        }
+      }
       // Message events
       if (listenerName === "nodeIKernelMsgListener") {
         return this._translateMsgEvent(eventName, data);
@@ -452,6 +464,20 @@ class EventTranslator {
 
   getBuddyList() {
     return this._buddyList;
+  }
+
+  /**
+   * Wait for an onGroupFileInfoUpdate callback matching the given reqId.
+   * Returns a Promise that resolves with the file list data or rejects on timeout.
+   */
+  waitForGroupFileInfo(reqId, timeoutMs = 10000) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this._pendingFileReqs.delete(reqId);
+        reject(new Error("group file info timeout"));
+      }, timeoutMs);
+      this._pendingFileReqs.set(reqId, { resolve, timer });
+    });
   }
 
   _cacheMemberInfo(data) {
