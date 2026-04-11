@@ -4,6 +4,7 @@ services:
     # To build from source instead, comment out 'image' and uncomment 'build':
     # build: .
     container_name: waylay
+    hostname: waylay
     privileged: true
     ports:
       - "13000:13000"   # Bridge WebSocket / QR code login page
@@ -14,13 +15,13 @@ services:
     environment:
       - BRIDGE_PORT=13000
       - BRIDGE_HOST=0.0.0.0
-      # Quick login: set your QQ number to skip QR code
+      # Quick login: set your QQ number to skip QR code on restart
       # - AUTO_LOGIN_QQ=123456789
       # OneBot v11 forward WebSocket
       - ONEBOT_WS_PORT=3001
       - ONEBOT_WS_HOST=0.0.0.0
       # OneBot v11 reverse WebSocket (JSON array of URLs)
-      - ONEBOT_WS_REVERSE_URLS=["ws://host.docker.internal:2536/OneBotv11"]
+      # - ONEBOT_WS_REVERSE_URLS=["ws://host.docker.internal:2536/OneBotv11"]
       - ONEBOT_TOKEN=
       # Milky protocol (uncomment to enable)
       # - MILKY_HTTP_PORT=8082

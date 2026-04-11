@@ -9,6 +9,15 @@ const { oneBotToNt } = require("./message");
  * Each handler takes (params, bridge, eventTranslator) and returns the response data.
  */
 
+/** Wrap a promise with a timeout. Rejects if the promise doesn't settle in time. */
+function withTimeout(promise, ms) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("timeout")), ms); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 const handlers = {};
 
 // ---- Meta / Info ----
@@ -57,27 +66,31 @@ handlers.get_friend_list = async (params, bridge, eventTranslator) => {
   return [];
 };
 
-handlers.get_stranger_info = async (params, bridge) => {
+handlers.get_stranger_info = async (params, bridge, eventTranslator) => {
   const userId = String(params.user_id || "");
-  if (!bridge.session) return { user_id: Number(userId), nickname: "", sex: "unknown", age: 0 };
-  try {
-    const profileService = bridge.session.getProfileService();
-    const uids = await bridge.session.getUidByUin("FriendsServiceImpl", [userId]);
-    const uid = uids?.uidInfo?.get(userId) || "";
-    if (uid) {
-      const profiles = await profileService.getUserSimpleInfo(false, [uid]);
+  const fallback = { user_id: Number(userId), nickname: "", sex: "unknown", age: 0 };
+  if (!bridge.session) return fallback;
+
+  // Check cache first (fast path, no native calls)
+  const buddy = eventTranslator.getBuddyList().get(userId);
+  if (buddy) {
+    return { user_id: Number(userId), nickname: buddy.nick || buddy.remark || "", sex: "unknown", age: 0 };
+  }
+  const uid = eventTranslator.getUidByUin(userId);
+  if (uid) {
+    // Try profile lookup with timeout — native calls can hang for strangers
+    try {
+      const profiles = await withTimeout(
+        bridge.session.getProfileService().getUserSimpleInfo(false, [uid]),
+        5000
+      );
       const profile = profiles?.profileMap?.get(uid) || profiles?.get?.(uid);
       if (profile) {
-        return {
-          user_id: Number(userId),
-          nickname: profile.nick || profile.nickName || "",
-          sex: "unknown",
-          age: 0,
-        };
+        return { user_id: Number(userId), nickname: profile.nick || profile.nickName || "", sex: "unknown", age: 0 };
       }
-    }
-  } catch {}
-  return { user_id: Number(userId), nickname: "", sex: "unknown", age: 0 };
+    } catch {}
+  }
+  return fallback;
 };
 
 // ---- Group ----
@@ -671,7 +684,41 @@ handlers.get_csrf_token = async () => ({ token: 0 });
 handlers.get_guild_list = async () => [];
 handlers.set_qq_profile = async () => null;
 handlers.set_qq_avatar = async () => null;
-handlers.send_like = async () => null;
+handlers.send_like = async (params, bridge, eventTranslator) => {
+  if (!bridge.session) return null;
+  const userId = String(params.user_id || "");
+  const times = Math.min(params.times || 1, 20);
+  let uid = eventTranslator.getUidByUin(userId);
+  if (!uid) {
+    try {
+      const r = await withTimeout(
+        bridge.session.getProfileService().getUidByUin("FriendsServiceImpl", [userId]),
+        5000
+      );
+      uid = r?.uidInfo?.get(userId);
+      if (uid) eventTranslator.recordUinUid(userId, uid);
+    } catch {}
+  }
+  if (!uid) return null;
+  try {
+    const profileLikeService = bridge.session.getProfileLikeService();
+    const result = await withTimeout(
+      profileLikeService.setBuddyProfileLike({
+        friendUid: uid,
+        sourceId: 71,
+        doLikeCount: times,
+        doLikeTollCount: 0,
+      }),
+      5000
+    );
+    if (result?.result !== 0) {
+      console.warn("[onebot-actions] send_like failed:", result?.errMsg || "unknown error");
+    }
+  } catch (e) {
+    console.warn("[onebot-actions] send_like error:", e.message);
+  }
+  return null;
+};
 handlers.set_group_special_title = async () => null;
 handlers.send_group_sign = async () => null;
 handlers.download_file = async () => ({ file: "" });
