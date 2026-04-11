@@ -508,15 +508,13 @@ function extractNodeContent(node) {
 }
 
 /**
- * Stage messages in self-chat, then use multiForwardMsgWithComment to send
- * as a real combined forward message.
+ * Send a real combined forward message via multiForwardMsgWithComment.
  *
- * Flow:
- *  1. For each node, convert to NT elements and send to self-peer
- *  2. Capture real msgIds via temporary onAddSendMsg listener
- *  3. Call multiForwardMsgWithComment(msgInfos, selfPeer, destPeer, [], Map)
- *  4. Clean up: recall self-messages, remove listener
- *  5. On failure, fall back to sending each node individually
+ * NTQQ requires msgIds backed by real sent messages for multiForwardMsg,
+ * so we stage each node to self-peer (sendMsg), capture the real msgId
+ * via onAddSendMsg, then forward all at once to the target.
+ *
+ * On failure, falls back to sending each node individually.
  */
 async function sendForwardMsg(messages, destPeer, bridge, eventTranslator) {
   if (!bridge.session) throw new Error("Session not ready");
@@ -529,14 +527,9 @@ async function sendForwardMsg(messages, destPeer, bridge, eventTranslator) {
 
   const selfPeer = { chatType: 1, peerUid: selfUid, guildId: "" };
   const msgService = bridge.session.getMsgService();
-
-  // Queue of pending resolvers for onAddSendMsg — FIFO order matches send order
-  const pendingQueue = [];
-  const collectedMsgIds = [];
+  const pendingQueue = []; // FIFO: onAddSendMsg resolvers in send order
   const msgInfos = [];
-  let hasMedia = false;
 
-  // Temporary listener to capture onAddSendMsg events for messages sent to self
   const tempListener = createListener("", {
     onAddSendMsg(msgRecord) {
       if (msgRecord?.chatType === 1 && msgRecord?.peerUid === selfUid && pendingQueue.length > 0) {
@@ -556,56 +549,41 @@ async function sendForwardMsg(messages, destPeer, bridge, eventTranslator) {
       const elements = await oneBotToNt(content);
       if (!elements.length) continue;
 
-      // Check for media elements that need upload time
-      if (elements.some(el => [2, 4, 5].includes(el.elementType))) hasMedia = true;
-
-      // Register media files with NTQQ (same logic as sendMessage)
+      // Register media files with NTQQ
       for (const el of elements) {
         try {
           if (el.elementType === 2 && el.picElement?.sourcePath) {
-            const mediaPath = registerMedia(msgService, el.picElement.md5HexStr, el.picElement.fileName, 2);
-            if (mediaPath) {
-              fs.copyFileSync(el.picElement.sourcePath, mediaPath);
-              el.picElement.sourcePath = mediaPath;
-            }
+            const mp = registerMedia(msgService, el.picElement.md5HexStr, el.picElement.fileName, 2);
+            if (mp) { fs.copyFileSync(el.picElement.sourcePath, mp); el.picElement.sourcePath = mp; }
           } else if (el.elementType === 5 && el.videoElement?.filePath) {
-            const mediaPath = registerMedia(msgService, el.videoElement.videoMd5, el.videoElement.fileName, 5);
-            if (mediaPath) {
-              fs.copyFileSync(el.videoElement.filePath, mediaPath);
-              el.videoElement.filePath = mediaPath;
-              const origThumbPath = el.videoElement.thumbPath?.get(0);
-              if (origThumbPath) {
-                const thumbDir = path.dirname(mediaPath).replace(/[/\\]Ori[/\\]?/, path.sep + "Thumb" + path.sep);
-                const thumbFilePath = path.join(thumbDir, `${el.videoElement.videoMd5}_0.png`);
-                fs.mkdirSync(path.dirname(thumbFilePath), { recursive: true });
-                fs.copyFileSync(origThumbPath, thumbFilePath);
-                el.videoElement.thumbPath = new Map([[0, thumbFilePath]]);
+            const mp = registerMedia(msgService, el.videoElement.videoMd5, el.videoElement.fileName, 5);
+            if (mp) {
+              fs.copyFileSync(el.videoElement.filePath, mp); el.videoElement.filePath = mp;
+              const tp = el.videoElement.thumbPath?.get(0);
+              if (tp) {
+                const td = path.dirname(mp).replace(/[/\\]Ori[/\\]?/, path.sep + "Thumb" + path.sep);
+                const tf = path.join(td, `${el.videoElement.videoMd5}_0.png`);
+                fs.mkdirSync(path.dirname(tf), { recursive: true });
+                fs.copyFileSync(tp, tf);
+                el.videoElement.thumbPath = new Map([[0, tf]]);
               }
             }
           } else if (el.elementType === 4 && el.pttElement?.filePath) {
-            const mediaPath = registerMedia(msgService, el.pttElement.md5HexStr, el.pttElement.fileName, 4);
-            if (mediaPath) {
-              fs.copyFileSync(el.pttElement.filePath, mediaPath);
-              el.pttElement.filePath = mediaPath;
-            }
+            const mp = registerMedia(msgService, el.pttElement.md5HexStr, el.pttElement.fileName, 4);
+            if (mp) { fs.copyFileSync(el.pttElement.filePath, mp); el.pttElement.filePath = mp; }
           }
         } catch (e) {
           console.warn("[forward] Media registration error:", e.message);
         }
       }
 
-      // Queue a promise for the onAddSendMsg event
+      // Stage to self-peer, capture real msgId via onAddSendMsg
       const msgIdPromise = new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error("onAddSendMsg timeout")), 60000);
         pendingQueue.push({ resolve, reject, timer });
       });
-
-      // Send to self-peer
       await msgService.sendMsg("0", selfPeer, elements, new Map());
-
-      // Wait for the real msgId from onAddSendMsg
       const msgId = await msgIdPromise;
-      collectedMsgIds.push(msgId);
 
       const nickname = node.nickname || node.data?.name || node.data?.nickname || bridge.selfInfo.nickName || "";
       msgInfos.push({ msgId, senderShowName: nickname });
@@ -613,33 +591,18 @@ async function sendForwardMsg(messages, destPeer, bridge, eventTranslator) {
 
     if (msgInfos.length === 0) return { message_id: 0 };
 
-    // Wait for media uploads to complete before forwarding
-    if (hasMedia) {
-      await new Promise(r => setTimeout(r, Math.min(msgInfos.length * 1500, 10000)));
-    }
-
-    // Forward all staged messages to the target peer
     const result = await msgService.multiForwardMsgWithComment(
       msgInfos, selfPeer, destPeer, [], new Map()
     );
     console.log(`[forward] multiForwardMsg: ${msgInfos.length} nodes -> peer=${destPeer.peerUid}, result=${result?.errMsg || result?.result}`);
-
     return { message_id: 0 };
 
   } catch (e) {
     console.error("[forward] multiForwardMsg failed:", e.message, "- falling back to individual send");
     return await _sendForwardFallback(messages, destPeer, bridge, eventTranslator);
   } finally {
-    // Cleanup: remove temp listener
     try { msgService.removeKernelMsgListener(tempListener); } catch {}
     for (const p of pendingQueue) clearTimeout(p.timer);
-
-    // Recall staged self-messages after a delay (let forward complete first)
-    if (collectedMsgIds.length > 0) {
-      setTimeout(() => {
-        try { msgService.recallMsg(selfPeer, collectedMsgIds); } catch {}
-      }, 5000);
-    }
   }
 }
 
@@ -689,6 +652,7 @@ handlers.get_forward_msg = async (params, bridge) => {
   return { messages: [] };
 };
 
+
 // ---- Group admin operations ----
 
 handlers.set_group_ban = async (params, bridge) => {
@@ -718,6 +682,7 @@ handlers.set_group_kick = async (params, bridge) => {
   } catch {}
   return null;
 };
+
 
 handlers.set_group_admin = async (params, bridge) => {
   if (!bridge.session) return null;

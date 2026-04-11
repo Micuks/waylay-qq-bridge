@@ -210,8 +210,8 @@ Waylay:
 | `send_private_msg` | 发送私聊消息 |
 | `delete_msg` | 撤回消息 |
 | `get_msg` | 获取消息详情 |
-| `send_group_forward_msg` | 发送群合并转发 |
-| `send_private_forward_msg` | 发送私聊合并转发 |
+| `send_group_forward_msg` | 发送群合并转发（原生合并卡片） |
+| `send_private_forward_msg` | 发送私聊合并转发（原生合并卡片） |
 | `get_forward_msg` | 获取合并转发内容 |
 
 #### 好友/用户

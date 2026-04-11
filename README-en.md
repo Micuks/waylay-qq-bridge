@@ -206,8 +206,8 @@ Waylay:
 | `send_private_msg` | Send private message |
 | `delete_msg` | Recall message |
 | `get_msg` | Get message details |
-| `send_group_forward_msg` | Send group forward message |
-| `send_private_forward_msg` | Send private forward message |
+| `send_group_forward_msg` | Send group forward message (native combined card) |
+| `send_private_forward_msg` | Send private forward message (native combined card) |
 | `get_forward_msg` | Get forward message content |
 
 #### Friends / Users

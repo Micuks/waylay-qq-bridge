@@ -83,13 +83,30 @@ async function resolveMediaFile(file, defaultExt) {
   return null;
 }
 
-/** Wrapper for image files — adds dimensions */
+/** Wrapper for image files — adds dimensions and validates image data */
 async function resolveImageFile(file) {
   const resolved = await resolveMediaFile(file);
   if (!resolved) return null;
   const buf = fs.readFileSync(resolved.path);
+  // Reject non-image data (e.g., QQ CDN error JSON with expired rkey)
+  if (!isImageData(buf)) {
+    const preview = buf.toString("utf8", 0, Math.min(buf.length, 120));
+    console.warn(`[message] Rejected non-image data (${buf.length} bytes): ${preview}`);
+    return null;
+  }
   const dim = getImageDimensions(buf);
   return { ...resolved, ...dim };
+}
+
+function isImageData(buf) {
+  if (!buf || buf.length < 4) return false;
+  // PNG, JPEG, GIF, WEBP, BMP
+  if (buf[0] === 0x89 && buf[1] === 0x50) return true; // PNG
+  if (buf[0] === 0xFF && buf[1] === 0xD8) return true; // JPEG
+  if (buf[0] === 0x47 && buf[1] === 0x49) return true; // GIF
+  if (buf[0] === 0x52 && buf[1] === 0x49) return true; // WEBP (RIFF)
+  if (buf[0] === 0x42 && buf[1] === 0x4D) return true; // BMP
+  return false;
 }
 
 function detectExtFromName(name) {
