@@ -611,4 +611,4 @@ function segmentsToRawMessage(segments) {
     .join("");
 }
 
-module.exports = { ntToOneBot, oneBotToNt, segmentsToRawMessage };
+module.exports = { ntToOneBot, oneBotToNt, segmentsToRawMessage, resolveMediaFile, resolveImageFile };

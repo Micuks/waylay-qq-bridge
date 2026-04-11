@@ -20,6 +20,7 @@ class Bridge {
     this.selfInfo = { uin: "", uid: "", nickName: "" };
     this.server = null; // set externally after construction
     this.onebotAdapter = null; // set externally after construction
+    this.milkyAdapter = null; // set externally after construction
 
     this.appDir = config.qqResourceAppDir || "/opt/QQ/resources/app";
     this.packageJSON = JSON.parse(
@@ -37,6 +38,11 @@ class Bridge {
     this.onebotAdapter = adapter;
   }
 
+  /** Set the MilkyAdapter instance for pushing events */
+  setMilkyAdapter(adapter) {
+    this.milkyAdapter = adapter;
+  }
+
   // --- Event handler ---
 
   _onEvent(event) {
@@ -52,6 +58,9 @@ class Bridge {
     }
     if (this.onebotAdapter) {
       this.onebotAdapter.pushEvent(event.listenerName, event.eventName, event.data);
+    }
+    if (this.milkyAdapter) {
+      this.milkyAdapter.pushEvent(event.listenerName, event.eventName, event.data);
     }
   }
 
@@ -371,8 +380,9 @@ class Bridge {
         type: "on_session",
         data: { sub_type: "onSessionInitComplete", data: {} },
       });
-      // Re-notify OneBot adapter so Yunzai re-fetches friend/group lists
+      // Re-notify adapters so clients re-fetch friend/group lists
       if (this.onebotAdapter) this.onebotAdapter.notifyLogin();
+      if (this.milkyAdapter) this.milkyAdapter.notifyLogin();
     }, 3000);
   }
 

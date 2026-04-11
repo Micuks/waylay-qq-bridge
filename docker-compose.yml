@@ -8,6 +8,7 @@ services:
     ports:
       - "13000:13000"   # Bridge WebSocket / QR code login page
       - "3001:3001"     # OneBot v11 forward WebSocket
+      # - "8082:8082"   # Milky protocol HTTP/WS/SSE
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -21,6 +22,9 @@ services:
       # OneBot v11 reverse WebSocket (JSON array of URLs)
       # - ONEBOT_WS_REVERSE_URLS=["ws://host.docker.internal:2536/OneBotv11"]
       - ONEBOT_TOKEN=
+      # Milky protocol (uncomment to enable)
+      # - MILKY_HTTP_PORT=8082
+      # - MILKY_TOKEN=
     volumes:
       - qq_data:/root/.config/QQ
 

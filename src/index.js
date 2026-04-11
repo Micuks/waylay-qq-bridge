@@ -3,6 +3,7 @@
 const { Bridge } = require("./bridge");
 const { BridgeServer } = require("./server");
 const { OneBotAdapter } = require("./onebot/adapter");
+const { MilkyAdapter } = require("./milky/adapter");
 
 // --- Parse CLI arguments and environment ---
 
@@ -18,6 +19,12 @@ function parseConfig() {
     onebotWsHost: process.env.ONEBOT_WS_HOST || "0.0.0.0",
     onebotWsReverseUrls: parseJsonArray(process.env.ONEBOT_WS_REVERSE_URLS || ""),
     onebotToken: process.env.ONEBOT_TOKEN || "",
+
+    // Milky protocol config
+    milkyPort: parseInt(process.env.MILKY_HTTP_PORT || "0"),
+    milkyHost: process.env.MILKY_HOST || "0.0.0.0",
+    milkyToken: process.env.MILKY_TOKEN || "",
+    milkyWebhookUrls: parseJsonArray(process.env.MILKY_WEBHOOK_URLS || ""),
   };
 
   for (const arg of process.argv) {
@@ -30,6 +37,11 @@ function parseConfig() {
       config.onebotWsReverseUrls = parseJsonArray(arg.split("=").slice(1).join("="));
     }
     if (arg.startsWith("--onebot-token=")) config.onebotToken = arg.split("=")[1];
+    if (arg.startsWith("--milky-port=")) config.milkyPort = parseInt(arg.split("=")[1]);
+    if (arg.startsWith("--milky-token=")) config.milkyToken = arg.split("=")[1];
+    if (arg.startsWith("--milky-webhook=")) {
+      config.milkyWebhookUrls = parseJsonArray(arg.split("=").slice(1).join("="));
+    }
   }
 
   return config;
@@ -75,9 +87,25 @@ async function main() {
     bridge.setOneBotAdapter(onebotAdapter);
   }
 
+  // Milky protocol adapter
+  let milkyAdapter = null;
+  if (config.milkyPort) {
+    milkyAdapter = new MilkyAdapter(
+      {
+        port: config.milkyPort,
+        host: config.milkyHost,
+        token: config.milkyToken,
+        webhookUrls: config.milkyWebhookUrls,
+      },
+      bridge
+    );
+    bridge.setMilkyAdapter(milkyAdapter);
+  }
+
   // Start servers
   await server.start();
   if (onebotAdapter) await onebotAdapter.start();
+  if (milkyAdapter) await milkyAdapter.start();
 
   // Then initialize NTQQ
   await bridge.init();

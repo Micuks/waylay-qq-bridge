@@ -4,12 +4,13 @@
 
 # Waylay
 
-**Lightweight, fast, pure-JS headless NTQQ bridge with built-in OneBot v11 support**
+**Lightweight, fast, pure-JS headless NTQQ bridge with built-in OneBot v11 + Milky support**
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-≥18-green.svg)](https://nodejs.org/)
 [![QQ Version](https://img.shields.io/badge/QQ-3.2.27-blue.svg)](https://im.qq.com/linuxqq/index.shtml)
 [![OneBot v11](https://img.shields.io/badge/OneBot-v11-black.svg)](https://github.com/botuniverse/onebot-11)
+[![Milky](https://img.shields.io/badge/Milky-v1-purple.svg)](#milky-protocol)
 [![Dependencies](https://img.shields.io/badge/deps-1_(ws)-brightgreen.svg)](#highlights)
 
 [中文](README.md)
@@ -98,6 +99,8 @@ git clone https://github.com/Micuks/waylay-qq-bridge.git
 cd waylay-qq-bridge
 docker compose up -d --build
 ```
+
+**Windows users**: See the [WSL Installation Guide](docs/wsl-guide.md)
 
 ### Quick Login
 
