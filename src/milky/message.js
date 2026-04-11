@@ -147,18 +147,18 @@ function convertElementToMilky(el, msg) {
 
 // ---- Milky message segments -> NTQQ send elements ----
 
-function milkyToNt(segments, uidResolver) {
+async function milkyToNt(segments, uidResolver) {
   if (!Array.isArray(segments)) return [];
 
   const elements = [];
   for (const seg of segments) {
-    const el = convertMilkySegment(seg, uidResolver);
+    const el = await convertMilkySegment(seg, uidResolver);
     if (el) elements.push(el);
   }
   return elements;
 }
 
-function convertMilkySegment(seg, uidResolver) {
+async function convertMilkySegment(seg, uidResolver) {
   switch (seg.type) {
     case "text":
       return {
@@ -213,7 +213,7 @@ function convertMilkySegment(seg, uidResolver) {
 
     case "image": {
       const fileRef = seg.data?.url || seg.data?.file_id || "";
-      const resolved = resolveImageFile(fileRef);
+      const resolved = await resolveImageFile(fileRef);
       if (!resolved) return null;
       return {
         elementType: 2,
@@ -238,7 +238,7 @@ function convertMilkySegment(seg, uidResolver) {
 
     case "record": {
       const fileRef = seg.data?.url || seg.data?.file_id || "";
-      const resolved = resolveMediaFile(fileRef, "amr");
+      const resolved = await resolveMediaFile(fileRef, "amr");
       if (!resolved) return null;
       return {
         elementType: 4,
@@ -263,7 +263,7 @@ function convertMilkySegment(seg, uidResolver) {
 
     case "video": {
       const fileRef = seg.data?.url || seg.data?.file_id || "";
-      const resolved = resolveMediaFile(fileRef, "mp4");
+      const resolved = await resolveMediaFile(fileRef, "mp4");
       if (!resolved) return null;
       return {
         elementType: 5,

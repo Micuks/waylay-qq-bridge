@@ -3,7 +3,9 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { execSync } = require("child_process");
+const { execSync, exec } = require("child_process");
+const { promisify } = require("util");
+const execAsync = promisify(exec);
 
 /**
  * NTQQ element <-> OneBot v11 message segment converter.
@@ -28,7 +30,7 @@ try { fs.mkdirSync(TEMP_DIR, { recursive: true }); } catch {}
  * Supports: base64://..., http(s)://..., file:///..., or local path.
  * Returns { path, size, md5 } plus optional image dimensions.
  */
-function resolveMediaFile(file, defaultExt) {
+async function resolveMediaFile(file, defaultExt) {
   if (!file) return null;
 
   // base64 encoded
@@ -42,12 +44,12 @@ function resolveMediaFile(file, defaultExt) {
     return { path: filePath, size: buf.length, md5 };
   }
 
-  // HTTP(S) URL — download with curl
+  // HTTP(S) URL — download with curl (async to avoid blocking event loop)
   if (file.startsWith("http://") || file.startsWith("https://")) {
     const urlMd5 = crypto.createHash("md5").update(file).digest("hex");
     const filePath = path.join(TEMP_DIR, `${urlMd5}.tmp`);
     try {
-      execSync(`curl -fsSL -o "${filePath}" "${file}"`, { timeout: 60000 });
+      await execAsync(`curl -fsSL -o "${filePath}" "${file}"`, { timeout: 60000 });
       const buf = fs.readFileSync(filePath);
       const md5 = crypto.createHash("md5").update(buf).digest("hex");
       const ext = defaultExt || detectExtFromName(file) || detectImageExt(buf);
@@ -82,8 +84,8 @@ function resolveMediaFile(file, defaultExt) {
 }
 
 /** Wrapper for image files — adds dimensions */
-function resolveImageFile(file) {
-  const resolved = resolveMediaFile(file);
+async function resolveImageFile(file) {
+  const resolved = await resolveMediaFile(file);
   if (!resolved) return null;
   const buf = fs.readFileSync(resolved.path);
   const dim = getImageDimensions(buf);
@@ -272,7 +274,7 @@ function convertElement(el, msg) {
 
 // ---- OneBot v11 segments -> NTQQ send elements ----
 
-function oneBotToNt(segments, uidResolver) {
+async function oneBotToNt(segments, uidResolver) {
   if (!Array.isArray(segments)) {
     if (typeof segments === "string") {
       return [makeTextElement(segments)];
@@ -286,13 +288,13 @@ function oneBotToNt(segments, uidResolver) {
       elements.push(makeTextElement(seg));
       continue;
     }
-    const el = convertSegment(seg, uidResolver);
+    const el = await convertSegment(seg, uidResolver);
     if (el) elements.push(el);
   }
   return elements;
 }
 
-function convertSegment(seg, uidResolver) {
+async function convertSegment(seg, uidResolver) {
   switch (seg.type) {
     case "text":
       return makeTextElement(seg.data?.text || "");
@@ -347,7 +349,7 @@ function convertSegment(seg, uidResolver) {
 
     case "image": {
       const fileRef = seg.data?.file || "";
-      const resolved = resolveImageFile(fileRef);
+      const resolved = await resolveImageFile(fileRef);
       if (!resolved) {
         console.warn("[message] Could not resolve image:", fileRef.substring(0, 80));
         return null;
@@ -375,13 +377,13 @@ function convertSegment(seg, uidResolver) {
 
     case "video": {
       const fileRef = seg.data?.file || "";
-      const resolved = resolveMediaFile(fileRef, "mp4");
+      const resolved = await resolveMediaFile(fileRef, "mp4");
       if (!resolved) {
         console.warn("[message] Could not resolve video:", fileRef.substring(0, 80));
         return null;
       }
       // Generate thumbnail if ffmpeg is available, otherwise use placeholder
-      const thumbInfo = generateVideoThumb(resolved.path, resolved.md5);
+      const thumbInfo = await generateVideoThumb(resolved.path, resolved.md5);
       return {
         elementType: 5,
         elementId: "",
@@ -390,7 +392,7 @@ function convertSegment(seg, uidResolver) {
           filePath: resolved.path,
           videoMd5: resolved.md5,
           thumbMd5: thumbInfo.md5,
-          fileTime: getVideoDuration(resolved.path),
+          fileTime: await getVideoDuration(resolved.path),
           thumbPath: new Map([[0, thumbInfo.path]]),
           thumbSize: thumbInfo.size,
           thumbWidth: thumbInfo.width || 1920,
@@ -402,7 +404,7 @@ function convertSegment(seg, uidResolver) {
 
     case "record": {
       const fileRef = seg.data?.file || "";
-      const resolved = resolveMediaFile(fileRef, "amr");
+      const resolved = await resolveMediaFile(fileRef, "amr");
       if (!resolved) {
         console.warn("[message] Could not resolve record:", fileRef.substring(0, 80));
         return null;
@@ -415,7 +417,7 @@ function convertSegment(seg, uidResolver) {
           filePath: resolved.path,
           md5HexStr: resolved.md5,
           fileSize: String(resolved.size),
-          duration: getAudioDuration(resolved.path),
+          duration: await getAudioDuration(resolved.path),
           formatType: 1,
           voiceType: 1,
           voiceChangeType: 0,
@@ -431,7 +433,7 @@ function convertSegment(seg, uidResolver) {
     case "file": {
       const fileRef = seg.data?.file || "";
       const name = seg.data?.name || "";
-      const resolved = resolveMediaFile(fileRef);
+      const resolved = await resolveMediaFile(fileRef);
       if (!resolved) {
         console.warn("[message] Could not resolve file:", fileRef.substring(0, 80));
         return null;
@@ -531,10 +533,10 @@ const PLACEHOLDER_PNG = Buffer.from(
 );
 
 /** Generate a video thumbnail. Uses ffmpeg if available, otherwise a placeholder. */
-function generateVideoThumb(videoPath, videoMd5) {
+async function generateVideoThumb(videoPath, videoMd5) {
   const thumbPath = path.join(TEMP_DIR, `${videoMd5}_thumb.png`);
   try {
-    execSync(
+    await execAsync(
       `ffmpeg -y -i "${videoPath}" -ss 00:00:01 -vframes 1 -vf scale=320:-1 "${thumbPath}" 2>/dev/null`,
       { timeout: 10000 }
     );
@@ -551,26 +553,26 @@ function generateVideoThumb(videoPath, videoMd5) {
 }
 
 /** Get video duration in seconds via ffprobe. Returns default if unavailable. */
-function getVideoDuration(filePath) {
+async function getVideoDuration(filePath) {
   try {
-    const out = execSync(
+    const { stdout } = await execAsync(
       `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}" 2>/dev/null`,
       { timeout: 5000 }
-    ).toString().trim();
-    return Math.round(parseFloat(out)) || 15;
+    );
+    return Math.round(parseFloat(stdout.trim())) || 15;
   } catch {
     return 15;
   }
 }
 
 /** Get audio duration in seconds via ffprobe. Returns default if unavailable. */
-function getAudioDuration(filePath) {
+async function getAudioDuration(filePath) {
   try {
-    const out = execSync(
+    const { stdout } = await execAsync(
       `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}" 2>/dev/null`,
       { timeout: 5000 }
-    ).toString().trim();
-    return Math.max(1, Math.round(parseFloat(out))) || 5;
+    );
+    return Math.max(1, Math.round(parseFloat(stdout.trim()))) || 5;
   } catch {
     return 5;
   }

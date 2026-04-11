@@ -328,7 +328,7 @@ async function sendMessage(peer, message, bridge, eventTranslator) {
   }
 
   const uidResolver = atResolveMap.size > 0 ? (uin) => atResolveMap.get(uin) || { uid: "", name: null } : null;
-  const elements = oneBotToNt(message, uidResolver);
+  const elements = await oneBotToNt(message, uidResolver);
   if (!elements.length) throw new Error("Empty message");
 
   // Resolve reply elements: convert OneBot short ID -> real NTQQ msgId
@@ -465,7 +465,7 @@ handlers.send_group_forward_msg = async (params, bridge, eventTranslator) => {
   for (const node of messages) {
     if (node.type !== "node" || !node.data?.content) continue;
     try {
-      const elements = oneBotToNt(node.data.content);
+      const elements = await oneBotToNt(node.data.content);
       if (elements.length) {
         await bridge.session.getMsgService().sendMsg("0", peer, elements, new Map());
       }
@@ -489,7 +489,7 @@ handlers.send_private_forward_msg = async (params, bridge, eventTranslator) => {
   for (const node of messages) {
     if (node.type !== "node" || !node.data?.content) continue;
     try {
-      const elements = oneBotToNt(node.data.content);
+      const elements = await oneBotToNt(node.data.content);
       if (elements.length) {
         await bridge.session.getMsgService().sendMsg("0", peer, elements, new Map());
       }

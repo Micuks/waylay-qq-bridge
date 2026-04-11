@@ -223,7 +223,7 @@ async function sendMessage(peer, segments, bridge, eventTranslator) {
     ? (uin) => mentionMap.get(uin) || { uid: "", name: null }
     : null;
 
-  const elements = milkyToNt(segments, uidResolver);
+  const elements = await milkyToNt(segments, uidResolver);
   if (!elements.length) throw new Error("Empty message");
 
   // Resolve reply elements: convert message_seq -> real NTQQ msgId
