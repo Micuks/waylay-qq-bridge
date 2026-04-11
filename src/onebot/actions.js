@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { oneBotToNt } = require("./message");
+const { createListener } = require("../listener");
 
 /**
  * OneBot v11 action handlers.
@@ -71,22 +72,28 @@ handlers.get_stranger_info = async (params, bridge, eventTranslator) => {
   const fallback = { user_id: Number(userId), nickname: "", sex: "unknown", age: 0 };
   if (!bridge.session) return fallback;
 
-  // Check cache first (fast path, no native calls)
+  // 1. Check buddy cache
   const buddy = eventTranslator.getBuddyList().get(userId);
-  if (buddy) {
-    return { user_id: Number(userId), nickname: buddy.nick || buddy.remark || "", sex: "unknown", age: 0 };
+  if (buddy?.nick) {
+    return { user_id: Number(userId), nickname: buddy.nick, sex: "unknown", age: 0 };
   }
+  // 2. Check group member cache (covers most Yunzai use cases)
+  for (const [, members] of eventTranslator._groupMembers) {
+    const member = members.get(userId);
+    if (member?.nick) {
+      return { user_id: Number(userId), nickname: member.nick, sex: "unknown", age: 0 };
+    }
+  }
+  // 3. Event-based profile lookup via getUserSimpleInfo + onProfileSimpleChanged
   const uid = eventTranslator.getUidByUin(userId);
   if (uid) {
-    // Try profile lookup with timeout — native calls can hang for strangers
     try {
-      const profiles = await withTimeout(
-        bridge.session.getProfileService().getUserSimpleInfo(false, [uid]),
-        5000
-      );
-      const profile = profiles?.profileMap?.get(uid) || profiles?.get?.(uid);
-      if (profile) {
-        return { user_id: Number(userId), nickname: profile.nick || profile.nickName || "", sex: "unknown", age: 0 };
+      const profilePromise = eventTranslator.waitForProfile(uid, 5000);
+      bridge.session.getProfileService().getUserSimpleInfo(false, [uid]);
+      const profile = await profilePromise;
+      const nick = profile?.coreInfo?.nick || profile?.nick || "";
+      if (nick) {
+        return { user_id: Number(userId), nickname: nick, sex: "unknown", age: 0 };
       }
     } catch {}
   }
@@ -500,26 +507,163 @@ function extractNodeContent(node) {
   return arr.map(normalizeSegment).filter(Boolean);
 }
 
-handlers.send_group_forward_msg = async (params, bridge, eventTranslator) => {
-  const groupId = String(params.group_id || "");
-  const messages = params.messages || [];
-  const peer = { chatType: 2, peerUid: groupId, guildId: "" };
+/**
+ * Stage messages in self-chat, then use multiForwardMsgWithComment to send
+ * as a real combined forward message.
+ *
+ * Flow:
+ *  1. For each node, convert to NT elements and send to self-peer
+ *  2. Capture real msgIds via temporary onAddSendMsg listener
+ *  3. Call multiForwardMsgWithComment(msgInfos, selfPeer, destPeer, [], Map)
+ *  4. Clean up: recall self-messages, remove listener
+ *  5. On failure, fall back to sending each node individually
+ */
+async function sendForwardMsg(messages, destPeer, bridge, eventTranslator) {
+  if (!bridge.session) throw new Error("Session not ready");
 
+  const selfUid = bridge.selfInfo?.uid;
+  if (!selfUid) {
+    console.warn("[forward] No self UID, falling back to individual send");
+    return await _sendForwardFallback(messages, destPeer, bridge, eventTranslator);
+  }
+
+  const selfPeer = { chatType: 1, peerUid: selfUid, guildId: "" };
+  const msgService = bridge.session.getMsgService();
+
+  // Queue of pending resolvers for onAddSendMsg — FIFO order matches send order
+  const pendingQueue = [];
+  const collectedMsgIds = [];
+  const msgInfos = [];
+  let hasMedia = false;
+
+  // Temporary listener to capture onAddSendMsg events for messages sent to self
+  const tempListener = createListener("", {
+    onAddSendMsg(msgRecord) {
+      if (msgRecord?.chatType === 1 && msgRecord?.peerUid === selfUid && pendingQueue.length > 0) {
+        const pending = pendingQueue.shift();
+        clearTimeout(pending.timer);
+        pending.resolve(msgRecord.msgId);
+      }
+    },
+  });
+  msgService.addKernelMsgListener(tempListener);
+
+  try {
+    for (const node of messages) {
+      const content = extractNodeContent(node);
+      if (!content || content.length === 0) continue;
+
+      const elements = await oneBotToNt(content);
+      if (!elements.length) continue;
+
+      // Check for media elements that need upload time
+      if (elements.some(el => [2, 4, 5].includes(el.elementType))) hasMedia = true;
+
+      // Register media files with NTQQ (same logic as sendMessage)
+      for (const el of elements) {
+        try {
+          if (el.elementType === 2 && el.picElement?.sourcePath) {
+            const mediaPath = registerMedia(msgService, el.picElement.md5HexStr, el.picElement.fileName, 2);
+            if (mediaPath) {
+              fs.copyFileSync(el.picElement.sourcePath, mediaPath);
+              el.picElement.sourcePath = mediaPath;
+            }
+          } else if (el.elementType === 5 && el.videoElement?.filePath) {
+            const mediaPath = registerMedia(msgService, el.videoElement.videoMd5, el.videoElement.fileName, 5);
+            if (mediaPath) {
+              fs.copyFileSync(el.videoElement.filePath, mediaPath);
+              el.videoElement.filePath = mediaPath;
+              const origThumbPath = el.videoElement.thumbPath?.get(0);
+              if (origThumbPath) {
+                const thumbDir = path.dirname(mediaPath).replace(/[/\\]Ori[/\\]?/, path.sep + "Thumb" + path.sep);
+                const thumbFilePath = path.join(thumbDir, `${el.videoElement.videoMd5}_0.png`);
+                fs.mkdirSync(path.dirname(thumbFilePath), { recursive: true });
+                fs.copyFileSync(origThumbPath, thumbFilePath);
+                el.videoElement.thumbPath = new Map([[0, thumbFilePath]]);
+              }
+            }
+          } else if (el.elementType === 4 && el.pttElement?.filePath) {
+            const mediaPath = registerMedia(msgService, el.pttElement.md5HexStr, el.pttElement.fileName, 4);
+            if (mediaPath) {
+              fs.copyFileSync(el.pttElement.filePath, mediaPath);
+              el.pttElement.filePath = mediaPath;
+            }
+          }
+        } catch (e) {
+          console.warn("[forward] Media registration error:", e.message);
+        }
+      }
+
+      // Queue a promise for the onAddSendMsg event
+      const msgIdPromise = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("onAddSendMsg timeout")), 60000);
+        pendingQueue.push({ resolve, reject, timer });
+      });
+
+      // Send to self-peer
+      await msgService.sendMsg("0", selfPeer, elements, new Map());
+
+      // Wait for the real msgId from onAddSendMsg
+      const msgId = await msgIdPromise;
+      collectedMsgIds.push(msgId);
+
+      const nickname = node.nickname || node.data?.name || node.data?.nickname || bridge.selfInfo.nickName || "";
+      msgInfos.push({ msgId, senderShowName: nickname });
+    }
+
+    if (msgInfos.length === 0) return { message_id: 0 };
+
+    // Wait for media uploads to complete before forwarding
+    if (hasMedia) {
+      await new Promise(r => setTimeout(r, Math.min(msgInfos.length * 1500, 10000)));
+    }
+
+    // Forward all staged messages to the target peer
+    const result = await msgService.multiForwardMsgWithComment(
+      msgInfos, selfPeer, destPeer, [], new Map()
+    );
+    console.log(`[forward] multiForwardMsg: ${msgInfos.length} nodes -> peer=${destPeer.peerUid}, result=${result?.errMsg || result?.result}`);
+
+    return { message_id: 0 };
+
+  } catch (e) {
+    console.error("[forward] multiForwardMsg failed:", e.message, "- falling back to individual send");
+    return await _sendForwardFallback(messages, destPeer, bridge, eventTranslator);
+  } finally {
+    // Cleanup: remove temp listener
+    try { msgService.removeKernelMsgListener(tempListener); } catch {}
+    for (const p of pendingQueue) clearTimeout(p.timer);
+
+    // Recall staged self-messages after a delay (let forward complete first)
+    if (collectedMsgIds.length > 0) {
+      setTimeout(() => {
+        try { msgService.recallMsg(selfPeer, collectedMsgIds); } catch {}
+      }, 5000);
+    }
+  }
+}
+
+/** Fallback: send each node as an individual message (not combined forward). */
+async function _sendForwardFallback(messages, peer, bridge, eventTranslator) {
   let lastMsgId = 0;
   for (const node of messages) {
     const content = extractNodeContent(node);
-    if (!content || content.length === 0) {
-      console.warn("[onebot-actions] send_group_forward_msg: skipped node:", JSON.stringify(node)?.substring(0, 200));
-      continue;
-    }
+    if (!content || content.length === 0) continue;
     try {
       const result = await sendMessage(peer, content, bridge, eventTranslator);
       if (result?.message_id) lastMsgId = result.message_id;
     } catch (e) {
-      console.error("[onebot-actions] send_group_forward_msg node error:", e.message);
+      console.error("[forward] fallback node error:", e.message);
     }
   }
   return { message_id: lastMsgId };
+}
+
+handlers.send_group_forward_msg = async (params, bridge, eventTranslator) => {
+  const groupId = String(params.group_id || "");
+  const messages = params.messages || [];
+  const destPeer = { chatType: 2, peerUid: groupId, guildId: "" };
+  return await sendForwardMsg(messages, destPeer, bridge, eventTranslator);
 };
 
 handlers.send_private_forward_msg = async (params, bridge, eventTranslator) => {
@@ -532,27 +676,12 @@ handlers.send_private_forward_msg = async (params, bridge, eventTranslator) => {
     } catch {}
   }
   if (!peerUid) {
-    console.warn("[onebot-actions] send_private_forward_msg: cannot resolve UID for:", userId);
+    console.warn("[forward] send_private_forward_msg: cannot resolve UID for:", userId);
     peerUid = userId;
   }
-  const peer = { chatType: 1, peerUid, guildId: "" };
+  const destPeer = { chatType: 1, peerUid, guildId: "" };
   const messages = params.messages || [];
-
-  let lastMsgId = 0;
-  for (const node of messages) {
-    const content = extractNodeContent(node);
-    if (!content || content.length === 0) {
-      console.warn("[onebot-actions] send_private_forward_msg: skipped node:", JSON.stringify(node)?.substring(0, 200));
-      continue;
-    }
-    try {
-      const result = await sendMessage(peer, content, bridge, eventTranslator);
-      if (result?.message_id) lastMsgId = result.message_id;
-    } catch (e) {
-      console.error("[onebot-actions] send_private_forward_msg node error:", e.message);
-    }
-  }
-  return { message_id: lastMsgId };
+  return await sendForwardMsg(messages, destPeer, bridge, eventTranslator);
 };
 
 handlers.get_forward_msg = async (params, bridge) => {

@@ -29,6 +29,8 @@ class EventTranslator {
     this._buddyListInitialized = false;
     // Pending group file requests: reqId -> { resolve, timer }
     this._pendingFileReqs = new Map();
+    // Pending profile requests: uid -> [{ resolve, timer }]
+    this._pendingProfileReqs = new Map();
   }
 
   /** Record a UIN<->UID mapping from observed data */
@@ -114,6 +116,22 @@ class EventTranslator {
           clearTimeout(timer);
           this._pendingFileReqs.delete(reqId);
           resolve(data);
+        }
+      }
+      // Dispatch profile callbacks from onProfileSimpleChanged
+      if (eventName === "onProfileSimpleChanged" && this._pendingProfileReqs.size > 0) {
+        // data is a Map/Object of uid -> profile
+        const entries = typeof data?.entries === "function" ? data.entries()
+          : typeof data === "object" && data ? Object.entries(data) : [];
+        for (const [uid, profile] of entries) {
+          const waiters = this._pendingProfileReqs.get(uid);
+          if (waiters) {
+            this._pendingProfileReqs.delete(uid);
+            for (const { resolve, timer } of waiters) {
+              clearTimeout(timer);
+              resolve(profile);
+            }
+          }
         }
       }
       // Message events
@@ -477,6 +495,21 @@ class EventTranslator {
         reject(new Error("group file info timeout"));
       }, timeoutMs);
       this._pendingFileReqs.set(reqId, { resolve, timer });
+    });
+  }
+
+  /**
+   * Wait for an onProfileSimpleChanged event containing the given UID.
+   * Returns a Promise that resolves with the profile data or rejects on timeout.
+   */
+  waitForProfile(uid, timeoutMs = 5000) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this._pendingProfileReqs.delete(uid);
+        reject(new Error("profile lookup timeout"));
+      }, timeoutMs);
+      if (!this._pendingProfileReqs.has(uid)) this._pendingProfileReqs.set(uid, []);
+      this._pendingProfileReqs.get(uid).push({ resolve, timer });
     });
   }
 
