@@ -25,11 +25,14 @@ Waylay is a lightweight headless NTQQ bridge written in plain JavaScript with bu
 
 ## Highlights
 
-- **Lightweight** — 9 source files, ~3,000 lines of plain JavaScript, 1 runtime dependency (`ws`)
+- **Lightweight** — 13 source files, ~4,000 lines of plain JavaScript, 1 runtime dependency (`ws`)
 - **Fast queries** — Event-driven in-memory cache, sub-millisecond read responses
+- **Non-blocking I/O** — Async media downloads and audio/video probing, never blocks message processing
 - **Simple architecture** — Direct `wrapper.node` calls, no extra abstraction layers
 - **Low resource usage** — Single-process, no WebUI / database / logging framework overhead
+- **Multi-protocol** — Built-in OneBot v11 and Milky protocol support
 - **Ready to deploy** — Docker one-liner, connects directly to Yunzai / Koishi
+- **Quick login** — Supports QQ number quick login, skip QR code on container restart
 - **LLOneBot compatible** — Also provides LLOneBot-compatible WebSocket protocol (port 13000)
 
 ## How It Works
@@ -138,7 +141,7 @@ The QQ Bot ecosystem has several excellent open-source projects, each with its o
 | | **Waylay** | **NapCatQQ** | **LLOneBot** | **Lagrange.Core** |
 |---|---|---|---|---|
 | **Language** | JavaScript | TypeScript | TypeScript | C# |
-| **Source size** | ~3,000 lines / 9 files | ~3 MB / 832 files | ~1.7 MB / 529 files | ~1.4 MB / 1,027 files |
+| **Source size** | ~4,000 lines / 13 files | ~3 MB / 832 files | ~1.7 MB / 529 files | ~1.4 MB / 1,027 files |
 | **Runtime deps** | 1 (`ws`) | ~30 npm packages | 23 npm packages | 6 NuGet packages |
 | **node_modules** | 208 KB | ~100+ MB | ~80+ MB | N/A (.NET) |
 | **Approach** | Direct wrapper.node loading | process.dlopen wrapper.node | PMHQ memory injection + WebSocket | Protocol reimplementation |
@@ -213,6 +216,7 @@ Waylay:
 |--------|-------------|
 | `get_friend_list` | Get friend list |
 | `get_stranger_info` | Get stranger info |
+| `send_like` | Send profile like |
 | `set_friend_add_request` | Handle friend request |
 
 #### Groups

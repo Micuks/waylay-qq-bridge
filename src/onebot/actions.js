@@ -32,9 +32,9 @@ handlers.get_login_info = async (params, bridge) => {
 handlers.get_version_info = async () => {
   return {
     app_name: "waylay",
-    app_version: "0.2.0",
+    app_version: "0.4.0",
     protocol_version: "v11",
-    app_full_name: "waylay v0.2.0",
+    app_full_name: "waylay v0.4.0",
   };
 };
 
