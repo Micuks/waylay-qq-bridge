@@ -143,3 +143,6 @@ introspect-result.json
 protocol-strings.json
 frida-introspect.js
 introspect.js
+
+# Internal docs (not for public repo)
+docs-internal/
