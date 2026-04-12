@@ -249,6 +249,7 @@ Waylay:
 | `get_group_root_files` | 获取群根目录文件列表 |
 | `get_group_files_by_folder` | 获取群子目录文件列表 |
 | `upload_group_file` | 上传群文件 |
+| `move_group_file` | 移动群文件到指定文件夹 |
 | `delete_group_file` | 删除群文件 |
 | `create_group_file_folder` | 创建群文件夹 |
 | `delete_group_folder` | 删除群文件夹 |

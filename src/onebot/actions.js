@@ -2,7 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { oneBotToNt } = require("./message");
+const { oneBotToNt, resolveMediaFile } = require("./message");
 const { createListener } = require("../listener");
 
 /**
@@ -988,9 +988,37 @@ handlers.get_group_file_url = async () => ({ url: "" });
 handlers.upload_group_file = async (params, bridge, eventTranslator) => {
   const groupId = String(params.group_id || "");
   const file = params.file || "";
-  const name = params.name || path.basename(file);
+  const name = params.name || path.basename(file) || "file";
+  if (!file) throw new Error("Missing 'file' parameter");
+  // Pre-validate file resolution to give specific error messages
+  const resolved = await resolveMediaFile(file);
+  if (!resolved) {
+    if (file.startsWith("http://") || file.startsWith("https://")) {
+      throw new Error(`Failed to download file from URL: ${file.substring(0, 200)}`);
+    } else if (file.startsWith("file://")) {
+      throw new Error(`File not found or unreadable: ${file.slice(7)}`);
+    } else if (file.startsWith("base64://")) {
+      throw new Error("Failed to decode base64 file data");
+    } else {
+      throw new Error(`File not found or unreadable: ${file}`);
+    }
+  }
   const peer = { chatType: 2, peerUid: groupId, guildId: "" };
-  return await sendMessage(peer, [{ type: "file", data: { file, name } }], bridge, eventTranslator);
+  // Wrap with timeout — sendMsg may hang for large file uploads while BDH
+  // processes the upload asynchronously.  Return message_id: 0 on timeout
+  // so the caller always gets a deterministic response.
+  try {
+    return await withTimeout(
+      sendMessage(peer, [{ type: "file", data: { file, name } }], bridge, eventTranslator),
+      30000
+    );
+  } catch (e) {
+    if (e.message === "timeout") {
+      console.warn("[onebot-actions] upload_group_file: sendMsg timed out, file may still be uploading via BDH");
+      return { message_id: 0 };
+    }
+    throw e;
+  }
 };
 
 handlers.upload_private_file = async (params, bridge, eventTranslator) => {
@@ -1003,10 +1031,57 @@ handlers.upload_private_file = async (params, bridge, eventTranslator) => {
     } catch {}
   }
   const file = params.file || "";
-  const name = params.name || path.basename(file);
+  const name = params.name || path.basename(file) || "file";
+  if (!file) throw new Error("Missing 'file' parameter");
+  const resolved = await resolveMediaFile(file);
+  if (!resolved) {
+    if (file.startsWith("http://") || file.startsWith("https://")) {
+      throw new Error(`Failed to download file from URL: ${file.substring(0, 200)}`);
+    } else if (file.startsWith("file://")) {
+      throw new Error(`File not found or unreadable: ${file.slice(7)}`);
+    } else if (file.startsWith("base64://")) {
+      throw new Error("Failed to decode base64 file data");
+    } else {
+      throw new Error(`File not found or unreadable: ${file}`);
+    }
+  }
   const peer = { chatType: 1, peerUid: peerUid || userId, guildId: "" };
-  return await sendMessage(peer, [{ type: "file", data: { file, name } }], bridge, eventTranslator);
+  try {
+    return await withTimeout(
+      sendMessage(peer, [{ type: "file", data: { file, name } }], bridge, eventTranslator),
+      30000
+    );
+  } catch (e) {
+    if (e.message === "timeout") {
+      console.warn("[onebot-actions] upload_private_file: sendMsg timed out, file may still be uploading via BDH");
+      return { message_id: 0 };
+    }
+    throw e;
+  }
 };
+handlers.move_group_file = async (params, bridge) => {
+  if (!bridge.session) throw new Error("Session not ready");
+  const groupCode = String(params.group_id || "");
+  const fileId = String(params.file_id || "");
+  const folderId = String(params.folder_id || params.target_folder_id || "");
+  const busId = params.busid || params.bus_id || 102;
+  if (!groupCode || !fileId) throw new Error("Missing group_id or file_id");
+  const richMediaService = bridge.session.getRichMediaService();
+  // NTQQ wrapper.node may expose moveGroupFile in newer versions
+  if (typeof richMediaService.moveGroupFile === "function") {
+    try {
+      await withTimeout(
+        richMediaService.moveGroupFile(groupCode, [busId], [fileId], folderId),
+        10000
+      );
+      return null;
+    } catch (e) {
+      throw new Error(`moveGroupFile failed: ${e.message}`);
+    }
+  }
+  throw new Error("move_group_file is not supported: NTQQ wrapper.node does not expose moveGroupFile in this QQ version");
+};
+
 handlers.delete_group_file = async (params, bridge) => {
   if (!bridge.session) return null;
   const groupCode = String(params.group_id || "");

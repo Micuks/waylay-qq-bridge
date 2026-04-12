@@ -245,6 +245,7 @@ Waylay:
 | `get_group_root_files` | List root directory files |
 | `get_group_files_by_folder` | List files in subfolder |
 | `upload_group_file` | Upload group file |
+| `move_group_file` | Move group file to folder |
 | `delete_group_file` | Delete group file |
 | `create_group_file_folder` | Create group folder |
 | `delete_group_folder` | Delete group folder |
