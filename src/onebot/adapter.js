@@ -2,8 +2,11 @@
 
 const { WebSocketServer, WebSocket } = require("ws");
 const http = require("http");
+const fs = require("fs");
+const path = require("path");
 const { handlers } = require("./actions");
 const { EventTranslator } = require("./events");
+const { setFileProxyBase, getImageFilePath } = require("./message");
 
 /**
  * OneBot v11 adapter.
@@ -31,6 +34,11 @@ class OneBotAdapter {
   }
 
   async start() {
+    // Configure image file proxy URL so OneBot events use local URLs instead of expiring CDN rkeys
+    if (this.config.wsPort) {
+      setFileProxyBase(`http://127.0.0.1:${this.config.wsPort}`);
+    }
+
     // Start forward WS server if configured
     if (this.config.wsPort) {
       await this._startForwardWS();
@@ -53,6 +61,10 @@ class OneBotAdapter {
 
   async _startForwardWS() {
     this.httpServer = http.createServer((req, res) => {
+      // Serve cached image files via local proxy (avoids CDN rkey expiration)
+      if (req.method === "GET" && req.url.startsWith("/file/")) {
+        return this._serveFile(req, res);
+      }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "ok", version: "waylay/0.2.0" }));
     });
@@ -95,6 +107,40 @@ class OneBotAdapter {
       });
       this.httpServer.on("error", reject);
     });
+  }
+
+  /** Serve a cached image file by key (md5.ext), waiting for NTQQ download if needed */
+  async _serveFile(req, res) {
+    const key = decodeURIComponent(req.url.slice(6)); // strip "/file/"
+
+    // Try to find the file, waiting up to 10s for NTQQ download to complete
+    let filePath = getImageFilePath(key);
+    if (!filePath || !fs.existsSync(filePath)) {
+      for (let i = 0; i < 20; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        filePath = getImageFilePath(key);
+        if (filePath && fs.existsSync(filePath)) break;
+      }
+    }
+
+    if (!filePath || !fs.existsSync(filePath)) {
+      res.writeHead(404);
+      return res.end("Not found");
+    }
+
+    try {
+      const buf = fs.readFileSync(filePath);
+      const ext = path.extname(filePath).slice(1).toLowerCase();
+      const mime = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp", bmp: "image/bmp" };
+      res.writeHead(200, {
+        "Content-Type": mime[ext] || "application/octet-stream",
+        "Content-Length": buf.length,
+      });
+      res.end(buf);
+    } catch {
+      res.writeHead(500);
+      res.end("Read error");
+    }
   }
 
   // ---- Reverse WebSocket Client ----

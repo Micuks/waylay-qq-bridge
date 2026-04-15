@@ -25,6 +25,55 @@ const TEMP_DIR = "/tmp/waylay-media";
 // Ensure temp directory exists
 try { fs.mkdirSync(TEMP_DIR, { recursive: true }); } catch {}
 
+// ---- Image file proxy (avoids CDN rkey expiration) ----
+
+const _imageFileCache = new Map(); // "md5.ext" -> local path
+let _fileProxyBase = ""; // e.g. "http://127.0.0.1:3001"
+const MAX_IMAGE_CACHE = 5000;
+
+/** Configure the base URL for file proxy (called once from adapter start) */
+function setFileProxyBase(base) {
+  _fileProxyBase = base;
+}
+
+/** Register an image file path in the cache */
+function registerImageFile(key, filePath) {
+  _imageFileCache.set(key, filePath);
+  if (_imageFileCache.size > MAX_IMAGE_CACHE) {
+    const oldest = _imageFileCache.keys().next().value;
+    _imageFileCache.delete(oldest);
+  }
+}
+
+/** Look up a cached image file by key (md5.ext). Falls back to searching NTQQ Pic dirs. */
+function getImageFilePath(key) {
+  const cached = _imageFileCache.get(key);
+  if (cached && fs.existsSync(cached)) return cached;
+
+  // Fallback: search NTQQ media cache directories (Pic + Emoji)
+  const qqDir = path.join(process.env.HOME || "/root", ".config", "QQ");
+  try {
+    for (const d of fs.readdirSync(qqDir)) {
+      if (!d.startsWith("nt_qq_")) continue;
+      const ntData = path.join(qqDir, d, "nt_data");
+      const searchDirs = ["Pic", "Emoji/emoji-recv"];
+      for (const sub of searchDirs) {
+        const base = path.join(ntData, sub);
+        if (!fs.existsSync(base)) continue;
+        for (const month of fs.readdirSync(base)) {
+          const oriDir = path.join(base, month, "Ori");
+          const target = path.join(oriDir, key);
+          if (fs.existsSync(target)) {
+            _imageFileCache.set(key, target);
+            return target;
+          }
+        }
+      }
+    }
+  } catch {}
+  return null;
+}
+
 /**
  * Resolve a file reference to a local path with metadata.
  * Supports: base64://..., http(s)://..., file:///..., or local path.
@@ -70,6 +119,8 @@ async function resolveMediaFile(file, defaultExt) {
       const md5 = crypto.createHash("md5").update(buf).digest("hex");
       return { path: localPath, size: buf.length, md5 };
     }
+    console.warn(`[message] file:// path not found: ${localPath.substring(0, 120)}`
+      + (fs.existsSync("/.dockerenv") ? " (running in Docker — mount this host path as a volume)" : ""));
     return null;
   }
 
@@ -186,6 +237,15 @@ function convertElement(el, msg) {
     if (pe.originImageUrl) {
       url = pe.originImageUrl.startsWith("http") ? pe.originImageUrl : IMAGE_HTTP_HOST + pe.originImageUrl;
     }
+
+    // Set proxy URL for images (actual download triggered by events.js via NTQQ API)
+    const md5 = pe.md5HexStr || "";
+    if (md5 && _fileProxyBase) {
+      const ext = detectExtFromName(pe.fileName) || "jpg";
+      const cacheKey = `${md5}.${ext}`;
+      url = `${_fileProxyBase}/file/${cacheKey}`;
+    }
+
     return {
       type: "image",
       data: {
@@ -630,4 +690,4 @@ function segmentsToRawMessage(segments) {
     .join("");
 }
 
-module.exports = { ntToOneBot, oneBotToNt, segmentsToRawMessage, resolveMediaFile, resolveImageFile };
+module.exports = { ntToOneBot, oneBotToNt, segmentsToRawMessage, resolveMediaFile, resolveImageFile, setFileProxyBase, getImageFilePath, registerImageFile };

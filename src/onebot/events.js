@@ -1,6 +1,7 @@
 "use strict";
 
-const { ntToOneBot, segmentsToRawMessage } = require("./message");
+const fs = require("fs");
+const { ntToOneBot, segmentsToRawMessage, registerImageFile } = require("./message");
 
 /**
  * Translates NTQQ kernel listener events into OneBot v11 events.
@@ -275,8 +276,58 @@ class EventTranslator {
         this.cacheMsg(shortId, event);
         events.push(event);
       }
+
+      // Trigger NTQQ download for image elements (headless mode doesn't auto-download)
+      this._triggerImageDownloads(msg);
     }
     return events;
+  }
+
+  /** Request NTQQ to download images from a received message */
+  _triggerImageDownloads(msg) {
+    if (!this.bridge.session) return;
+    const msgService = this.bridge.session.getMsgService();
+    for (const el of msg.elements || []) {
+      if (!el.picElement || !el.picElement.md5HexStr) continue;
+      const pe = el.picElement;
+      try {
+        // Get the expected local file path from NTQQ
+        const pathInfo = {
+          md5HexStr: pe.md5HexStr, fileName: pe.fileName || "",
+          elementType: 2, elementSubType: 0,
+          thumbSize: 0, needCreate: true, downloadType: 1, file_uuid: "",
+        };
+        const expectedPath = msgService.getRichMediaFilePathForGuild(pathInfo);
+        if (expectedPath) {
+          const ext = expectedPath.split(".").pop() || "jpg";
+          registerImageFile(`${pe.md5HexStr}.${ext}`, expectedPath);
+        }
+
+        // Already downloaded? Skip.
+        if (expectedPath && fs.existsSync(expectedPath)) continue;
+
+        // Trigger download via NTQQ's rich media download
+        try {
+          msgService.downloadRichMedia({
+            fileModelId: "0",
+            downSourceType: 0,
+            triggerType: 1,
+            msgId: msg.msgId,
+            chatType: msg.chatType,
+            peerUid: msg.peerUid,
+            elementId: el.elementId,
+            thumbSize: 0,
+            downloadType: 1,
+            filePath: expectedPath || "",
+          });
+          console.log(`[onebot-events] Triggered image download: ${pe.md5HexStr}`);
+        } catch (dlErr) {
+          console.warn(`[onebot-events] downloadRichMedia failed: ${dlErr.message}`);
+        }
+      } catch (e) {
+        console.warn(`[onebot-events] Image download trigger failed: ${e.message}`);
+      }
+    }
   }
 
   _onMsgInfoListUpdate(data) {
