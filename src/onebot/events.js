@@ -636,10 +636,13 @@ class EventTranslator {
   // ---- Buddy events ----
 
   _translateBuddyEvent(eventName, data) {
-    // Cache UIN<->UID from buddy list updates + detect friend_add
-    if (eventName === "onBuddyListChange" || eventName === "onBuddyListChangedV2") {
+    // onBuddyListChangedV2 carries a boolean loading-status flag, not a buddy list —
+    // ignoring it here avoids wiping _knownBuddyUins and emitting spurious friend_add
+    // events on the next real onBuddyListChange (which would cascade into a burst
+    // of get_stranger_info calls from Yunzai's friend_add handler).
+    if (eventName === "onBuddyListChange") {
       const events = [];
-      const categories = Array.isArray(data) ? data : [data];
+      const categories = Array.isArray(data) ? data : [];
       const currentUins = new Set();
 
       for (const cat of categories) {
@@ -658,6 +661,9 @@ class EventTranslator {
         }
       }
 
+      // Only emit friend_add once we have a prior confirmed snapshot. NTQQ may
+      // deliver partial category updates, so we never shrink _knownBuddyUins —
+      // a uin missing from the current snapshot isn't necessarily a deletion.
       if (this._buddyListInitialized) {
         for (const uin of currentUins) {
           if (!this._knownBuddyUins.has(uin)) {
@@ -672,8 +678,8 @@ class EventTranslator {
         }
       }
 
-      this._knownBuddyUins = currentUins;
-      this._buddyListInitialized = true;
+      for (const uin of currentUins) this._knownBuddyUins.add(uin);
+      if (currentUins.size > 0) this._buddyListInitialized = true;
       return events;
     }
 

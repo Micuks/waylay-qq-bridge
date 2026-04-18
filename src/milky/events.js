@@ -433,8 +433,9 @@ class MilkyEventTranslator {
   // ---- Buddy events ----
 
   _translateBuddyEvent(eventName, data) {
-    if (eventName === "onBuddyListChange" || eventName === "onBuddyListChangedV2") {
-      const categories = Array.isArray(data) ? data : [data];
+    // onBuddyListChangedV2 is a boolean loading-status flag, not a list.
+    if (eventName === "onBuddyListChange") {
+      const categories = Array.isArray(data) ? data : [];
       for (const cat of categories) {
         for (const buddy of cat?.buddyList || []) {
           if (buddy.uin && buddy.uid) {
