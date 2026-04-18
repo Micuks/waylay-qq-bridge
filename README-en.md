@@ -34,6 +34,7 @@ Waylay is a lightweight headless NTQQ bridge written in plain JavaScript with bu
 - **Ready to deploy** — Docker one-liner, connects directly to Yunzai / Koishi
 - **Quick login** — Supports QQ number quick login, skip QR code on container restart
 - **LLOneBot compatible** — Also provides LLOneBot-compatible WebSocket protocol (port 13000)
+- **Web console** — Built-in browser dashboard using the Waylay design system (landing + docs + login QR + `/api/status`), no extra service required
 
 ## How It Works
 
@@ -46,6 +47,34 @@ Bot Framework (Yunzai / Koishi) ←→ Waylay (OneBot v11) ←→ wrapper.node �
 3. Initializes QQ kernel, handles login (QR code or quick login)
 4. Registers kernel event listeners (messages, groups, friends, etc.)
 5. Exposes OneBot v11 WebSocket (port 3001) and Bridge WebSocket (port 13000)
+
+## Web Console
+
+Port `13000` serves both the Bridge WebSocket and a browser console built on the Waylay design system. Static assets are served directly by the bridge process — no extra services, no build step.
+
+| Path | Description |
+|------|-------------|
+| `GET /` | Landing page: brand, live status, architecture diagram, latency comparison (HTML for browsers, JSON for everything else) |
+| `GET /docs` | Documentation site (sidebar + content covering quickstart / install / protocols / API / errors / comparison) |
+| `GET /qrcode` | Login shell: embedded QR + status pill, polls login state (curl/scripts still receive the raw PNG) |
+| `GET /qrcode.png` | Always returns the raw QR PNG, convenient for scripting |
+| `GET /api/status` | Live JSON: version, uptime, login info, adapter state and connected client counts |
+| `GET /static/*` `GET /assets/*` | Design-system CSS / JS / SVG assets |
+
+Light (Parchment) and dark (Obsidian) themes are available, defaulting to the OS preference. The header button toggles and persists to `localStorage`. `?theme=dark` / `?theme=light` overrides on the URL.
+
+### Preview
+
+| | |
+|---|---|
+| ![Landing — light](docs/screenshots/landing-light.png) | ![Landing — dark](docs/screenshots/landing-dark.png) |
+| _Landing · Parchment_ | _Landing · Obsidian_ |
+| ![Docs — Quickstart](docs/screenshots/docs-quickstart.png) | ![Docs — OneBot](docs/screenshots/docs-onebot.png) |
+| _Docs · Quickstart_ | _Docs · OneBot v11_ |
+| ![QR — waiting](docs/screenshots/qrcode-waiting.png) | ![QR — logged in](docs/screenshots/qrcode-loggedin.png) |
+| _Login · waiting_ | _Login · logged in_ |
+
+The full visual system (palette, typography, components) is documented in [docs/screenshots/README.md](docs/screenshots/README.md) and `src/web/static/design.css`.
 
 ## Installation
 

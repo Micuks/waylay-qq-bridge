@@ -1,8 +1,58 @@
 "use strict";
 
 const http = require("http");
+const fs = require("fs");
+const path = require("path");
 const { WebSocketServer, WebSocket } = require("ws");
 const { randomUUID } = require("crypto");
+
+const WEB_ROOT = path.join(__dirname, "web");
+const STATIC_MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".css":  "text/css; charset=utf-8",
+  ".js":   "application/javascript; charset=utf-8",
+  ".svg":  "image/svg+xml",
+  ".png":  "image/png",
+  ".ico":  "image/x-icon",
+  ".json": "application/json; charset=utf-8",
+  ".txt":  "text/plain; charset=utf-8",
+  ".woff2":"font/woff2",
+};
+
+const SERVER_VERSION = "qq-bridge/0.4.1";
+const SERVER_START_MS = Date.now();
+
+function wantsHtml(req) {
+  const accept = (req.headers["accept"] || "").toLowerCase();
+  return accept.includes("text/html");
+}
+
+function safeJoin(root, relUrl) {
+  // Strip query/hash, decode, then resolve under root. Returns null on traversal.
+  const cleaned = relUrl.split("?")[0].split("#")[0].replace(/^\/+/, "");
+  let decoded;
+  try { decoded = decodeURIComponent(cleaned); } catch { return null; }
+  if (decoded.includes("\0")) return null;
+  const full = path.normalize(path.join(root, decoded));
+  if (full !== root && !full.startsWith(root + path.sep)) return null;
+  return full;
+}
+
+function serveFile(res, fullPath, fallbackMime) {
+  fs.readFile(fullPath, (err, buf) => {
+    if (err) {
+      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      return res.end("Not found");
+    }
+    const ext = path.extname(fullPath).toLowerCase();
+    const mime = STATIC_MIME[ext] || fallbackMime || "application/octet-stream";
+    res.writeHead(200, {
+      "Content-Type": mime,
+      "Cache-Control": ext === ".html" ? "no-store" : "public, max-age=300",
+    });
+    res.end(buf);
+  });
+}
 
 /**
  * Combined WebSocket + HTTP server for bridge protocol.
@@ -139,21 +189,113 @@ class BridgeServer {
       return;
     }
 
-    // Serve QR code image for login
-    if (req.url === "/qrcode" || req.url === "/qr") {
-      const fs = require("fs");
-      try {
-        const qr = fs.readFileSync("/tmp/qrcode.png");
-        res.writeHead(200, { "Content-Type": "image/png" });
-        return res.end(qr);
-      } catch {
-        res.writeHead(404);
-        return res.end("QR code not available yet");
-      }
+    if (req.method !== "GET") {
+      res.writeHead(405, { "Content-Type": "text/plain; charset=utf-8" });
+      return res.end("Method not allowed");
     }
 
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok", version: "qq-bridge/0.1.0" }));
+    const urlPath = (req.url || "/").split("?")[0];
+
+    // Static asset directories (under src/web/)
+    if (urlPath.startsWith("/static/")) {
+      const full = safeJoin(WEB_ROOT, urlPath);
+      if (!full) { res.writeHead(400); return res.end("Bad path"); }
+      return serveFile(res, full);
+    }
+    if (urlPath.startsWith("/assets/")) {
+      const full = safeJoin(WEB_ROOT, urlPath);
+      if (!full) { res.writeHead(400); return res.end("Bad path"); }
+      return serveFile(res, full);
+    }
+
+    // Brand favicon shortcut
+    if (urlPath === "/favicon.ico" || urlPath === "/favicon.svg") {
+      return serveFile(res, path.join(WEB_ROOT, "assets", "favicon.svg"));
+    }
+
+    // Live status JSON for the dashboard
+    if (urlPath === "/api/status") {
+      return this._handleStatus(req, res);
+    }
+
+    // QR code: PNG by default, HTML shell when a browser asks for it
+    if (urlPath === "/qrcode" || urlPath === "/qr") {
+      if (wantsHtml(req)) {
+        return serveFile(res, path.join(WEB_ROOT, "qrcode.html"));
+      }
+      return this._serveQrPng(res);
+    }
+    if (urlPath === "/qrcode.png" || urlPath === "/qr.png") {
+      return this._serveQrPng(res);
+    }
+
+    // Docs
+    if (urlPath === "/docs" || urlPath === "/docs/") {
+      return serveFile(res, path.join(WEB_ROOT, "docs.html"));
+    }
+
+    // Landing — HTML for browsers, JSON status for everything else
+    if (urlPath === "/" || urlPath === "/index.html") {
+      if (wantsHtml(req)) {
+        return serveFile(res, path.join(WEB_ROOT, "index.html"));
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ status: "ok", version: SERVER_VERSION }));
+    }
+
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Not found");
+  }
+
+  _serveQrPng(res) {
+    fs.readFile("/tmp/qrcode.png", (err, buf) => {
+      if (err) {
+        res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+        return res.end("QR code not available yet");
+      }
+      res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "no-store" });
+      res.end(buf);
+    });
+  }
+
+  _handleStatus(req, res) {
+    const bridge = this.bridge || {};
+    const cfg = bridge.config || {};
+    const onebot = bridge.onebotAdapter || null;
+    const milky = bridge.milkyAdapter || null;
+    const selfInfo = bridge.selfInfo || {};
+    const qrAvailable = (() => {
+      try { return fs.statSync("/tmp/qrcode.png").size > 0; }
+      catch { return false; }
+    })();
+
+    const data = {
+      status: "ok",
+      version: SERVER_VERSION,
+      uptime_sec: Math.floor((Date.now() - SERVER_START_MS) / 1000),
+      logged_in: Boolean(selfInfo.uin),
+      uin: selfInfo.uin || "",
+      nickname: selfInfo.nickName || "",
+      qrcode_available: qrAvailable,
+      bridge_port: this.port,
+      bridge_host: this.host,
+      bridge_ws_clients: this.wsClients ? this.wsClients.size : 0,
+      onebot: {
+        enabled: Boolean(onebot),
+        ws_port: cfg.onebotWsPort || 0,
+        reverse_urls: Array.isArray(cfg.onebotWsReverseUrls) ? cfg.onebotWsReverseUrls.length : 0,
+        clients: onebot && onebot.wsClients ? onebot.wsClients.size : 0,
+      },
+      milky: {
+        enabled: Boolean(milky && cfg.milkyPort),
+        port: cfg.milkyPort || 0,
+        ws_clients:  milky && milky.wsClients  ? milky.wsClients.size  : 0,
+        sse_clients: milky && milky.sseClients ? milky.sseClients.size : 0,
+        webhook_urls: Array.isArray(cfg.milkyWebhookUrls) ? cfg.milkyWebhookUrls.length : 0,
+      },
+    };
+    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.end(JSON.stringify(data));
   }
 
   // --- Request dispatch ---
