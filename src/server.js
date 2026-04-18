@@ -236,9 +236,9 @@ class BridgeServer {
       return this._serveQrPng(res);
     }
 
-    // Docs live in the wiki repo — redirect for anyone who keeps typing /docs
+    // Docs live in the standalone wiki — redirect for anyone who keeps typing /docs
     if (urlPath === "/docs" || urlPath === "/docs/") {
-      const target = process.env.WAYLAY_WIKI_URL || "https://github.com/Micuks/waylay-docs";
+      const target = process.env.WAYLAY_WIKI_URL || "https://waylay-wiki.micuks.click/";
       res.writeHead(302, { Location: target });
       return res.end();
     }

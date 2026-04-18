@@ -2,7 +2,7 @@
 
 This folder is the visual reference for the bridge's built-in web console, served directly by `src/server.js` from the static files under `src/web/`. It implements the **Waylay design system** — terminal-inspired, monospace-forward, single warm-amber accent.
 
-The console runs on the Bridge port (default `13000`, host `0.0.0.0`); start the container and open `http://<host>:13000/`. Long-form documentation (guides, protocol reference, action list, framework integration) lives in the external [waylay-docs](https://github.com/Micuks/waylay-docs) wiki — the console only renders status that is bound to the running instance.
+The console runs on the Bridge port (default `13000`, host `0.0.0.0`); start the container and open `http://<host>:13000/`. Long-form documentation (guides, protocol reference, action list, framework integration) lives at [waylay-wiki.micuks.click](https://waylay-wiki.micuks.click/) — the console only renders status that is bound to the running instance.
 
 The UI is bilingual: default `zh`, toggle to `en` via the header `中`/`EN` button. Theme toggle (Parchment ⇄ Obsidian) sits next to it.
 

@@ -58,10 +58,10 @@ Port `13000` serves both the Bridge WebSocket and a browser console built on the
 | `GET /qrcode` | Login shell: embedded QR + status pill, polls login state (curl/scripts still receive the raw PNG) |
 | `GET /qrcode.png` | Always returns the raw QR PNG, convenient for scripting |
 | `GET /api/status` | Live JSON: version, uptime, login info, adapter state and connected client counts |
-| `GET /docs` | 302-redirects to the external documentation site (defaults to `https://github.com/Micuks/waylay-docs`, override with `WAYLAY_WIKI_URL`) |
+| `GET /docs` | 302-redirects to the external documentation site (defaults to `https://waylay-wiki.micuks.click/`, override with `WAYLAY_WIKI_URL`) |
 | `GET /static/*` `GET /assets/*` | Design-system CSS / JS / SVG assets |
 
-> The console deliberately does not duplicate the long-form guides, protocol reference, action list, or framework integration docs — those live in [waylay-docs / wiki](https://github.com/Micuks/waylay-docs) so there is one source of truth. The console only carries information bound to the running instance.
+> The console deliberately does not duplicate the long-form guides, protocol reference, action list, or framework integration docs — those live at [waylay-wiki.micuks.click](https://waylay-wiki.micuks.click/) so there is one source of truth. The console only carries information bound to the running instance.
 
 UI defaults to Chinese (`zh`); the header button toggles to English (`en`). Light (Parchment) / dark (Obsidian) themes follow the OS preference and can also be toggled. All preferences are persisted to `localStorage`; `?lang=en` and `?theme=dark` work as URL overrides.
 
