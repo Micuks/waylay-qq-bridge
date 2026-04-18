@@ -79,17 +79,18 @@
   }
 
   function setRow(name, value, badge) {
-    const el = document.querySelector("[data-status='" + name + "']");
-    if (!el) return;
-    if (badge) {
-      el.innerHTML = "";
-      const span = document.createElement("span");
-      span.className = "wl-badge wl-badge--" + badge;
-      span.textContent = value;
-      el.appendChild(span);
-    } else {
-      el.textContent = value;
-    }
+    const els = document.querySelectorAll("[data-status='" + name + "']");
+    els.forEach(function (el) {
+      if (badge) {
+        el.innerHTML = "";
+        const span = document.createElement("span");
+        span.className = "wl-badge wl-badge--" + badge;
+        span.textContent = value;
+        el.appendChild(span);
+      } else {
+        el.textContent = value;
+      }
+    });
   }
 
   function tr(key, fallback) {
@@ -111,8 +112,13 @@
   function adapterText(adapter, kind) {
     if (!adapter.enabled) return isZh() ? "未启用" : "disabled";
     if (kind === "onebot") {
-      if (adapter.ws_port) return "ws :" + adapter.ws_port;
-      return isZh() ? "仅反向 WS" : "reverse only";
+      const parts = [];
+      if (adapter.ws_port) parts.push("ws :" + adapter.ws_port);
+      if (adapter.reverse_urls > 0) {
+        const label = isZh() ? "反向" : "reverse";
+        parts.push(label + " " + (adapter.reverse_clients ?? 0) + "/" + adapter.reverse_urls);
+      }
+      return parts.length ? parts.join(" · ") : (isZh() ? "未启用" : "disabled");
     }
     return "http :" + adapter.port;
   }

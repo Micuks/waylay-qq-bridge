@@ -278,6 +278,14 @@ class BridgeServer {
       catch { return false; }
     })();
 
+    const onebotForwardClients = onebot && onebot.wss && onebot.wss.clients ? onebot.wss.clients.size : 0;
+    let onebotReverseConnected = 0;
+    if (onebot && onebot.reverseClients) {
+      for (const ws of onebot.reverseClients.values()) {
+        if (ws && ws.readyState === 1 /* OPEN */) onebotReverseConnected++;
+      }
+    }
+
     const data = {
       status: "ok",
       version: SERVER_VERSION,
@@ -293,7 +301,9 @@ class BridgeServer {
         enabled: Boolean(onebot),
         ws_port: cfg.onebotWsPort || 0,
         reverse_urls: Array.isArray(cfg.onebotWsReverseUrls) ? cfg.onebotWsReverseUrls.length : 0,
-        clients: onebot && onebot.wsClients ? onebot.wsClients.size : 0,
+        forward_clients: onebotForwardClients,
+        reverse_clients: onebotReverseConnected,
+        clients: onebotForwardClients + onebotReverseConnected,
       },
       milky: {
         enabled: Boolean(milky && cfg.milkyPort),
