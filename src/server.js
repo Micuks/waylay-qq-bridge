@@ -236,9 +236,11 @@ class BridgeServer {
       return this._serveQrPng(res);
     }
 
-    // Docs
+    // Docs live in the wiki repo — redirect for anyone who keeps typing /docs
     if (urlPath === "/docs" || urlPath === "/docs/") {
-      return serveFile(res, path.join(WEB_ROOT, "docs.html"));
+      const target = process.env.WAYLAY_WIKI_URL || "https://github.com/Micuks/waylay-docs";
+      res.writeHead(302, { Location: target });
+      return res.end();
     }
 
     // Landing — HTML for browsers, JSON status for everything else

@@ -50,29 +50,31 @@ Bot Framework (Yunzai / Koishi) ←→ Waylay (OneBot v11) ←→ wrapper.node �
 
 ## Web Console
 
-Port `13000` serves both the Bridge WebSocket and a browser console built on the Waylay design system. Static assets are served directly by the bridge process — no extra services, no build step.
+Port `13000` serves both the Bridge WebSocket and a browser console built on the Waylay design system. Static assets are served directly by the bridge process — no extra services, no build step. `BRIDGE_HOST` defaults to `0.0.0.0`, listening on all interfaces.
 
 | Path | Description |
 |------|-------------|
 | `GET /` | Landing page: brand, live status, architecture diagram, latency comparison (HTML for browsers, JSON for everything else) |
-| `GET /docs` | Documentation site (sidebar + content covering quickstart / install / protocols / API / errors / comparison) |
 | `GET /qrcode` | Login shell: embedded QR + status pill, polls login state (curl/scripts still receive the raw PNG) |
 | `GET /qrcode.png` | Always returns the raw QR PNG, convenient for scripting |
 | `GET /api/status` | Live JSON: version, uptime, login info, adapter state and connected client counts |
+| `GET /docs` | 302-redirects to the external documentation site (defaults to `https://github.com/Micuks/waylay-docs`, override with `WAYLAY_WIKI_URL`) |
 | `GET /static/*` `GET /assets/*` | Design-system CSS / JS / SVG assets |
 
-Light (Parchment) and dark (Obsidian) themes are available, defaulting to the OS preference. The header button toggles and persists to `localStorage`. `?theme=dark` / `?theme=light` overrides on the URL.
+> The console deliberately does not duplicate the long-form guides, protocol reference, action list, or framework integration docs — those live in [waylay-docs / wiki](https://github.com/Micuks/waylay-docs) so there is one source of truth. The console only carries information bound to the running instance.
+
+UI defaults to Chinese (`zh`); the header button toggles to English (`en`). Light (Parchment) / dark (Obsidian) themes follow the OS preference and can also be toggled. All preferences are persisted to `localStorage`; `?lang=en` and `?theme=dark` work as URL overrides.
 
 ### Preview
 
 | | |
 |---|---|
-| ![Landing — light](docs/screenshots/landing-light.png) | ![Landing — dark](docs/screenshots/landing-dark.png) |
-| _Landing · Parchment_ | _Landing · Obsidian_ |
-| ![Docs — Quickstart](docs/screenshots/docs-quickstart.png) | ![Docs — OneBot](docs/screenshots/docs-onebot.png) |
-| _Docs · Quickstart_ | _Docs · OneBot v11_ |
-| ![QR — waiting](docs/screenshots/qrcode-waiting.png) | ![QR — logged in](docs/screenshots/qrcode-loggedin.png) |
-| _Login · waiting_ | _Login · logged in_ |
+| ![Landing — Parchment, zh](docs/screenshots/landing-light.png) | ![Landing — Obsidian, zh](docs/screenshots/landing-dark.png) |
+| _Landing · Parchment · zh_ | _Landing · Obsidian · zh_ |
+| ![Landing — Parchment, en](docs/screenshots/landing-light-en.png) | ![QR — waiting](docs/screenshots/qrcode-waiting.png) |
+| _Landing · English (click EN to toggle)_ | _Login · waiting_ |
+| ![QR — logged in](docs/screenshots/qrcode-loggedin.png) |  |
+| _Login · logged in_ |  |
 
 The full visual system (palette, typography, components) is documented in [docs/screenshots/README.md](docs/screenshots/README.md) and `src/web/static/design.css`.
 

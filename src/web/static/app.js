@@ -92,24 +92,43 @@
     }
   }
 
+  function tr(key, fallback) {
+    return (window.WL_I18N && window.WL_I18N.t) ? window.WL_I18N.t(key) : fallback;
+  }
+
+  function isZh() {
+    return window.WL_I18N && window.WL_I18N.getLang && window.WL_I18N.getLang() === "zh";
+  }
+
+  function loginText(s) {
+    if (s.logged_in) {
+      if (s.uin) return (isZh() ? "已登录 · " : "uin ") + s.uin;
+      return tr("qr.status.loggedin", "logged in");
+    }
+    return tr("qr.pill.waiting", "waiting");
+  }
+
+  function adapterText(adapter, kind) {
+    if (!adapter.enabled) return isZh() ? "未启用" : "disabled";
+    if (kind === "onebot") {
+      if (adapter.ws_port) return "ws :" + adapter.ws_port;
+      return isZh() ? "仅反向 WS" : "reverse only";
+    }
+    return "http :" + adapter.port;
+  }
+
   function refreshStatus() {
     fetch("/api/status", { headers: { Accept: "application/json" } })
       .then(function (r) { return r.json(); })
       .then(function (s) {
         setRow("version", s.version || "—");
         setRow("uptime", fmtUptime(s.uptime_sec));
-        setRow("login",
-          s.logged_in ? (s.uin ? "uin " + s.uin : "logged in") : "waiting",
-          s.logged_in ? "ok" : "warn");
+        setRow("login", loginText(s), s.logged_in ? "ok" : "warn");
         setRow("ws_clients", String(s.bridge_ws_clients ?? 0));
         setRow("bridge_port", String(s.bridge_port ?? "—"));
-        setRow("onebot",
-          s.onebot.enabled ? (s.onebot.ws_port ? "ws :" + s.onebot.ws_port : "reverse only") : "disabled",
-          s.onebot.enabled ? "ok" : undefined);
+        setRow("onebot", adapterText(s.onebot, "onebot"), s.onebot.enabled ? "ok" : undefined);
         setRow("onebot_clients", String(s.onebot.clients ?? 0));
-        setRow("milky",
-          s.milky.enabled ? "http :" + s.milky.port : "disabled",
-          s.milky.enabled ? "ok" : undefined);
+        setRow("milky", adapterText(s.milky, "milky"), s.milky.enabled ? "ok" : undefined);
         setRow("milky_clients", String((s.milky.ws_clients ?? 0) + (s.milky.sse_clients ?? 0)));
       })
       .catch(function () { /* ignore transient errors */ });
@@ -148,26 +167,24 @@
 
   let qrLoggedIn = false;
 
-  function setStampWaiting() {
-    if (qrLoggedIn) return;
+  function setStamp(kind, text) {
     const stamp = document.querySelector("[data-qr-status]");
     if (!stamp) return;
     stamp.innerHTML = "";
     const dot = document.createElement("span");
-    dot.className = "wl-dot wl-dot--live";
+    dot.className = "wl-dot wl-dot--" + kind;
     stamp.appendChild(dot);
-    stamp.appendChild(document.createTextNode("waiting · scan with QQ Mobile"));
+    stamp.appendChild(document.createTextNode(text));
+  }
+
+  function setStampWaiting() {
+    if (qrLoggedIn) return;
+    setStamp("live", tr("qr.status.waiting", "waiting · scan with QQ Mobile"));
   }
 
   function setStampMissing() {
     if (qrLoggedIn) return;
-    const stamp = document.querySelector("[data-qr-status]");
-    if (!stamp) return;
-    stamp.innerHTML = "";
-    const dot = document.createElement("span");
-    dot.className = "wl-dot wl-dot--warn";
-    stamp.appendChild(dot);
-    stamp.appendChild(document.createTextNode("no qr yet · waiting for kernel"));
+    setStamp("warn", tr("qr.status.missing", "no qr yet · waiting for kernel"));
   }
 
   function refreshQR() {
@@ -193,7 +210,10 @@
     if (!overlay) return;
     overlay.hidden = false;
     const label = overlay.querySelector("[data-qr-loggedin-label]");
-    if (label) label.textContent = uin ? "logged in · uin " + uin : "logged in";
+    if (label) {
+      const base = tr("qr.loggedin", "logged in");
+      label.textContent = uin ? base + " · " + uin : base;
+    }
   }
 
   function pollLoginState() {
@@ -203,13 +223,11 @@
         if (!s.logged_in) return;
         qrLoggedIn = true;
         setLoggedInOverlay(s.uin);
-        const stamp = document.querySelector("[data-qr-status]");
-        if (stamp) {
-          stamp.innerHTML = "";
-          const dot = document.createElement("span");
-          dot.className = "wl-dot wl-dot--ok";
-          stamp.appendChild(dot);
-          stamp.appendChild(document.createTextNode("logged in" + (s.uin ? " · " + s.uin : "")));
+        setStamp("ok", tr("qr.status.loggedin", "logged in") + (s.uin ? " · " + s.uin : ""));
+        const pill = document.querySelector("[data-status='login-pill']");
+        if (pill) {
+          pill.className = "wl-badge wl-badge--ok";
+          pill.textContent = tr("qr.pill.loggedin", "logged in") + (s.uin ? " · " + s.uin : "");
         }
       })
       .catch(function () {});

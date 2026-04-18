@@ -1,13 +1,16 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="zh-CN" data-theme="light"
+      data-i18n-title="doc.title.landing"
+      data-i18n-meta-description="meta.description">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>waylay» bridge — NTQQ headless OneBot v11 + Milky bridge</title>
-  <meta name="description" content="Lightweight, fast, pure-JS headless NTQQ bridge with built-in OneBot v11 + Milky protocol support.">
+  <title>waylay» bridge</title>
+  <meta name="description" content="">
   <link rel="icon" href="/assets/favicon.svg">
   <link rel="stylesheet" href="/static/design.css">
   <link rel="stylesheet" href="/static/app.css">
+  <script defer src="/static/i18n.js"></script>
   <script defer src="/static/app.js"></script>
 </head>
 <body>
@@ -25,22 +28,31 @@
         <span class="wl-topnav__wordmark">waylay<span class="accent">»</span></span>
       </a>
       <nav class="wl-topnav__nav">
-        <a href="/" class="wl-topnav__link is-active">Home</a>
-        <a href="/docs" class="wl-topnav__link">Docs</a>
-        <a href="/docs#install" class="wl-topnav__link">Install</a>
-        <a href="/docs#api" class="wl-topnav__link">API</a>
-        <a href="/qrcode" class="wl-topnav__link">/qrcode</a>
+        <a href="/" class="wl-topnav__link is-active" data-i18n="nav.home">首页</a>
+        <a href="/docs"
+           class="wl-topnav__link"
+           target="_blank" rel="noopener"
+           data-i18n="nav.docs"
+           data-i18n-attr-title="nav.docsTitle">文档</a>
+        <a href="/qrcode" class="wl-topnav__link" data-i18n="nav.qrcode">/qrcode</a>
       </nav>
     </div>
     <div class="wl-topnav__right">
-      <span class="wl-badge" data-status="version-badge"><span class="wl-dot wl-dot--live"></span><span data-status="version">…</span></span>
-      <button class="wl-topnav__icon-btn" data-action="toggle-theme" aria-label="Toggle theme" title="Toggle theme">
+      <span class="wl-badge"><span class="wl-dot wl-dot--live"></span><span data-status="version">…</span></span>
+      <button class="wl-topnav__icon-btn" data-action="toggle-lang"
+              data-i18n-attr-aria-label="nav.toggleLang"
+              data-i18n-attr-title="nav.toggleLang">
+        <span data-lang-label style="font-family:var(--wl-font-mono);font-size:12px;font-weight:600">EN</span>
+      </button>
+      <button class="wl-topnav__icon-btn" data-action="toggle-theme"
+              data-i18n-attr-aria-label="nav.toggleTheme"
+              data-i18n-attr-title="nav.toggleTheme">
         <svg data-theme-icon="moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"><path d="M20 14 A8 8 0 1 1 10 4 A6 6 0 0 0 20 14Z"/></svg>
         <svg data-theme-icon="sun" hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4" y1="12" x2="2" y2="12"/><line x1="22" y1="12" x2="20" y2="12"/><line x1="5" y1="5" x2="7" y2="7"/><line x1="17" y1="17" x2="19" y2="19"/><line x1="5" y1="19" x2="7" y2="17"/><line x1="17" y1="7" x2="19" y2="5"/></svg>
       </button>
       <a class="wl-btn" href="https://github.com/Micuks/waylay-qq-bridge" target="_blank" rel="noopener">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 A10 10 0 0 0 8.84 21.5 C9.34 21.58 9.5 21.27 9.5 21 V19.31 C6.73 19.91 6.14 17.97 6.14 17.97 C5.68 16.81 5.03 16.5 5.03 16.5 C4.12 15.88 5.1 15.9 5.1 15.9 C6.1 15.97 6.63 16.93 6.63 16.93 C7.5 18.45 8.97 18.01 9.54 17.75 C9.63 17.1 9.89 16.66 10.17 16.42 C7.95 16.17 5.62 15.31 5.62 11.5 C5.62 10.39 6 9.5 6.65 8.79 C6.55 8.54 6.2 7.5 6.75 6.15 C6.75 6.15 7.59 5.88 9.5 7.17 A9.37 9.37 0 0 1 12 6.84 C12.85 6.85 13.71 6.96 14.5 7.17 C16.41 5.88 17.25 6.15 17.25 6.15 C17.8 7.5 17.45 8.54 17.35 8.79 C18 9.5 18.38 10.39 18.38 11.5 C18.38 15.32 16.04 16.17 13.81 16.41 C14.17 16.72 14.5 17.33 14.5 18.26 V21 C14.5 21.27 14.66 21.59 15.17 21.5 A10 10 0 0 0 12 2 Z"/></svg>
-        GitHub
+        <span data-i18n="nav.github">GitHub</span>
       </a>
     </div>
   </header>
@@ -61,58 +73,56 @@ get_group_list            0.8ms
 get_group_member_list     1.0ms
 send_group_msg          403.0ms</pre>
     <div class="wl-hero-section__inner">
-      <span class="wl-badge wl-badge--accent">live · this instance</span>
+      <span class="wl-badge wl-badge--accent" data-i18n="hero.live">实时 · 当前实例</span>
       <h1 class="wl-hero wl-hero-section__title">waylay<span class="accent">»</span> bridge</h1>
-      <p class="wl-hero-section__lede">
-        Lightweight, fast, pure-JS headless NTQQ bridge with built-in OneBot v11 + Milky protocol support. This dashboard is served by the bridge process itself.
-      </p>
+      <p class="wl-hero-section__lede" data-i18n="hero.lede">轻量、高速、纯 JS 的 NTQQ 无头桥接，内置 OneBot v11 + Milky 协议支持。本控制台由 Bridge 进程直接提供。</p>
       <div class="wl-hero-section__cta">
         <a class="wl-btn wl-btn--primary" href="/qrcode">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 4 L19 12 L5 20 Z"/></svg>
-          Login QR
+          <span data-i18n="hero.cta.login">登录二维码</span>
         </a>
-        <a class="wl-btn" href="/docs">Read the docs</a>
-        <a class="wl-btn wl-btn--ghost" href="/api/status">/api/status</a>
+        <a class="wl-btn" href="/docs" target="_blank" rel="noopener" data-i18n="hero.cta.docs">阅读文档</a>
+        <a class="wl-btn wl-btn--ghost" href="/api/status" data-i18n="hero.cta.status">/api/status</a>
       </div>
       <div class="wl-hero-section__badges">
         <span class="wl-badge">Apache-2.0</span>
-        <span class="wl-badge">Node ≥18</span>
+        <span class="wl-badge" data-i18n="hero.badges.node">Node ≥18</span>
         <span class="wl-badge">QQ 3.2.27</span>
         <span class="wl-badge wl-badge--accent">OneBot v11</span>
         <span class="wl-badge wl-badge--accent">Milky v1</span>
-        <span class="wl-badge wl-badge--ok">deps · 1 (ws)</span>
+        <span class="wl-badge wl-badge--ok" data-i18n="hero.badges.deps">依赖 · 1 (ws)</span>
       </div>
     </div>
   </section>
 
   <!-- Live status -->
   <section class="wl-section">
-    <span class="wl-micro">Live status · polled every 4s</span>
-    <h2>Bridge state</h2>
+    <span class="wl-micro" data-i18n="status.micro">实时状态 · 每 4 秒轮询</span>
+    <h2 data-i18n="status.h">Bridge 状态</h2>
     <div class="wl-status-grid">
       <div class="wl-card wl-card--flush">
         <div class="wl-card__header">
-          <span><span class="wl-dot wl-dot--live"></span>kernel</span>
-          <span class="wl-micro">login</span>
+          <span><span class="wl-dot wl-dot--live"></span><span data-i18n="status.kernel">内核</span></span>
+          <span class="wl-micro" data-i18n="status.kernel.col">登录</span>
         </div>
         <div style="padding: 4px 16px 12px">
-          <div class="wl-status-row"><span class="wl-status-row__label">version</span><span class="wl-status-row__value" data-status="version">—</span></div>
-          <div class="wl-status-row"><span class="wl-status-row__label">uptime</span><span class="wl-status-row__value" data-status="uptime">—</span></div>
-          <div class="wl-status-row"><span class="wl-status-row__label">login</span><span class="wl-status-row__value" data-status="login">—</span></div>
-          <div class="wl-status-row"><span class="wl-status-row__label">bridge port</span><span class="wl-status-row__value" data-status="bridge_port">—</span></div>
-          <div class="wl-status-row"><span class="wl-status-row__label">ws clients</span><span class="wl-status-row__value" data-status="ws_clients">—</span></div>
+          <div class="wl-status-row"><span class="wl-status-row__label" data-i18n="status.row.version">版本</span><span class="wl-status-row__value" data-status="version">—</span></div>
+          <div class="wl-status-row"><span class="wl-status-row__label" data-i18n="status.row.uptime">运行时长</span><span class="wl-status-row__value" data-status="uptime">—</span></div>
+          <div class="wl-status-row"><span class="wl-status-row__label" data-i18n="status.row.login">登录态</span><span class="wl-status-row__value" data-status="login">—</span></div>
+          <div class="wl-status-row"><span class="wl-status-row__label" data-i18n="status.row.bport">Bridge 端口</span><span class="wl-status-row__value" data-status="bridge_port">—</span></div>
+          <div class="wl-status-row"><span class="wl-status-row__label" data-i18n="status.row.wsclients">WS 客户端</span><span class="wl-status-row__value" data-status="ws_clients">—</span></div>
         </div>
       </div>
       <div class="wl-card wl-card--flush">
         <div class="wl-card__header">
-          <span><span class="wl-dot wl-dot--ok"></span>protocols</span>
-          <span class="wl-micro">adapters</span>
+          <span><span class="wl-dot wl-dot--ok"></span><span data-i18n="status.protocols">协议</span></span>
+          <span class="wl-micro" data-i18n="status.protocols.col">适配器</span>
         </div>
         <div style="padding: 4px 16px 12px">
-          <div class="wl-status-row"><span class="wl-status-row__label">onebot v11</span><span class="wl-status-row__value" data-status="onebot">—</span></div>
-          <div class="wl-status-row"><span class="wl-status-row__label">onebot clients</span><span class="wl-status-row__value" data-status="onebot_clients">—</span></div>
-          <div class="wl-status-row"><span class="wl-status-row__label">milky</span><span class="wl-status-row__value" data-status="milky">—</span></div>
-          <div class="wl-status-row"><span class="wl-status-row__label">milky clients</span><span class="wl-status-row__value" data-status="milky_clients">—</span></div>
+          <div class="wl-status-row"><span class="wl-status-row__label" data-i18n="status.row.onebot">OneBot v11</span><span class="wl-status-row__value" data-status="onebot">—</span></div>
+          <div class="wl-status-row"><span class="wl-status-row__label" data-i18n="status.row.onebotc">OneBot 客户端</span><span class="wl-status-row__value" data-status="onebot_clients">—</span></div>
+          <div class="wl-status-row"><span class="wl-status-row__label" data-i18n="status.row.milky">Milky</span><span class="wl-status-row__value" data-status="milky">—</span></div>
+          <div class="wl-status-row"><span class="wl-status-row__label" data-i18n="status.row.milkyc">Milky 客户端</span><span class="wl-status-row__value" data-status="milky_clients">—</span></div>
         </div>
       </div>
     </div>
@@ -122,28 +132,28 @@ send_group_msg          403.0ms</pre>
   <section class="wl-stats">
     <div class="wl-stats__cell">
       <div class="wl-stats__num">~4,000</div>
-      <div class="wl-micro wl-stats__label">lines of plain JS</div>
+      <div class="wl-micro wl-stats__label" data-i18n="stats.lines">行纯 JavaScript</div>
     </div>
     <div class="wl-stats__cell">
       <div class="wl-stats__num">13</div>
-      <div class="wl-micro wl-stats__label">source files</div>
+      <div class="wl-micro wl-stats__label" data-i18n="stats.files">源文件数</div>
     </div>
     <div class="wl-stats__cell">
       <div class="wl-stats__num">1</div>
-      <div class="wl-micro wl-stats__label">runtime dependency</div>
+      <div class="wl-micro wl-stats__label" data-i18n="stats.deps">运行时依赖</div>
     </div>
     <div class="wl-stats__cell">
       <div class="wl-stats__num">0.7ms</div>
-      <div class="wl-micro wl-stats__label">get_login_info</div>
+      <div class="wl-micro wl-stats__label" data-i18n="stats.glogin">get_login_info</div>
     </div>
   </section>
 
   <!-- Architecture -->
   <section class="wl-section">
-    <span class="wl-micro">How it works</span>
-    <h2>Direct <code>wrapper.node</code> · no abstraction</h2>
+    <span class="wl-micro" data-i18n="arch.micro">工作原理</span>
+    <h2 data-i18n-html="arch.h">直连 <code>wrapper.node</code> · 无抽象层</h2>
     <div class="wl-code">
-      <div class="wl-code__head"><span>text</span><button class="wl-code__copy" data-copy>copy</button></div>
+      <div class="wl-code__head"><span data-i18n="code.text">TEXT</span><button class="wl-code__copy" data-copy data-i18n="code.copy">复制</button></div>
 <pre>Bot Framework (Yunzai / Koishi)
         ↓↑
 waylay» bridge
@@ -152,30 +162,35 @@ wrapper.node (NTQQ native module)
         ↓↑
 QQ Server</pre>
     </div>
-    <p>
-      Waylay runs inside QQ's Electron process with a patched entry point, loads <code>wrapper.node</code> directly, and exposes OneBot v11 + Milky on clean WebSocket ports. No memory injection. No protocol reimplementation. No browser-side UI.
+    <p data-i18n="arch.body">
+      Waylay 在 QQ 的 Electron 进程中运行（补丁入口点），直接加载 wrapper.node，并在 WebSocket 端口上暴露 OneBot v11 + Milky。无内存注入，无协议重写，无浏览器侧 UI。
     </p>
   </section>
 
   <!-- Latency -->
   <section class="wl-section">
-    <span class="wl-micro">Query latency · 10-round average</span>
-    <h2>Fast, because reads come from memory</h2>
+    <span class="wl-micro" data-i18n="lat.micro">查询延迟 · 10 轮平均值</span>
+    <h2 data-i18n="lat.h">极速读取 — 全部来自内存缓存</h2>
     <table>
-      <thead><tr><th>Action</th><th style="text-align:right">Waylay</th><th style="text-align:right">LLOneBot</th><th>Note</th></tr></thead>
+      <thead><tr>
+        <th data-i18n="lat.col.action">Action</th>
+        <th style="text-align:right" data-i18n="lat.col.waylay">Waylay</th>
+        <th style="text-align:right" data-i18n="lat.col.llonebot">LLOneBot</th>
+        <th data-i18n="lat.col.note">备注</th>
+      </tr></thead>
       <tbody>
         <tr><td><code>get_login_info</code></td><td style="text-align:right;font-family:var(--wl-font-mono);color:var(--wl-ok);font-weight:600">0.7ms</td><td style="text-align:right;font-family:var(--wl-font-mono);color:var(--wl-fg-3)">6.3ms</td><td></td></tr>
         <tr><td><code>get_friend_list</code></td><td style="text-align:right;font-family:var(--wl-font-mono);color:var(--wl-ok);font-weight:600">1.0ms</td><td style="text-align:right;font-family:var(--wl-font-mono);color:var(--wl-fg-3)">47.9ms</td><td></td></tr>
         <tr><td><code>get_group_list</code></td><td style="text-align:right;font-family:var(--wl-font-mono);color:var(--wl-ok);font-weight:600">0.8ms</td><td style="text-align:right;font-family:var(--wl-font-mono);color:var(--wl-fg-3)">27.3ms</td><td></td></tr>
         <tr><td><code>get_group_member_info</code></td><td style="text-align:right;font-family:var(--wl-font-mono);color:var(--wl-ok);font-weight:600">0.5ms</td><td style="text-align:right;font-family:var(--wl-font-mono);color:var(--wl-fg-3)">12.0ms</td><td></td></tr>
-        <tr><td><code>send_group_msg</code></td><td style="text-align:right;font-family:var(--wl-font-mono)">403ms</td><td style="text-align:right;font-family:var(--wl-font-mono)">457ms</td><td><span style="color:var(--wl-fg-3)">QQ server bound</span></td></tr>
+        <tr><td><code>send_group_msg</code></td><td style="text-align:right;font-family:var(--wl-font-mono)">403ms</td><td style="text-align:right;font-family:var(--wl-font-mono)">457ms</td><td><span style="color:var(--wl-fg-3)" data-i18n="lat.note.qq">QQ 服务器往返延迟</span></td></tr>
       </tbody>
     </table>
   </section>
 
   <footer class="wl-footer">
-    <span>waylay · headless ntqq bridge</span>
-    <span><a href="/docs">docs</a> · <a href="/qrcode">/qrcode</a> · <a href="/api/status">/api/status</a></span>
+    <span data-i18n="footer.brand">waylay · 无头 ntqq 桥接</span>
+    <span><a href="/docs" target="_blank" rel="noopener" data-i18n="footer.docs">文档</a> · <a href="/qrcode" data-i18n="footer.qr">/qrcode</a> · <a href="/api/status" data-i18n="footer.status">/api/status</a></span>
   </footer>
 </div>
 </body>

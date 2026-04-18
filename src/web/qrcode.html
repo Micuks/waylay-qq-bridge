@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="zh-CN" data-theme="light" data-i18n-title="doc.title.qrcode">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,6 +7,7 @@
   <link rel="icon" href="/assets/favicon.svg">
   <link rel="stylesheet" href="/static/design.css">
   <link rel="stylesheet" href="/static/app.css">
+  <script defer src="/static/i18n.js"></script>
   <script defer src="/static/app.js"></script>
 </head>
 <body>
@@ -23,13 +24,20 @@
         <span class="wl-topnav__wordmark">waylay<span class="accent">»</span></span>
       </a>
       <nav class="wl-topnav__nav">
-        <a href="/" class="wl-topnav__link">Home</a>
-        <a href="/docs" class="wl-topnav__link">Docs</a>
-        <a href="/qrcode" class="wl-topnav__link is-active">/qrcode</a>
+        <a href="/" class="wl-topnav__link" data-i18n="nav.home">首页</a>
+        <a href="/docs" class="wl-topnav__link" target="_blank" rel="noopener" data-i18n="nav.docs">文档</a>
+        <a href="/qrcode" class="wl-topnav__link is-active" data-i18n="nav.qrcode">/qrcode</a>
       </nav>
     </div>
     <div class="wl-topnav__right">
-      <button class="wl-topnav__icon-btn" data-action="toggle-theme" aria-label="Toggle theme" title="Toggle theme">
+      <button class="wl-topnav__icon-btn" data-action="toggle-lang"
+              data-i18n-attr-aria-label="nav.toggleLang"
+              data-i18n-attr-title="nav.toggleLang">
+        <span data-lang-label style="font-family:var(--wl-font-mono);font-size:12px;font-weight:600">EN</span>
+      </button>
+      <button class="wl-topnav__icon-btn" data-action="toggle-theme"
+              data-i18n-attr-aria-label="nav.toggleTheme"
+              data-i18n-attr-title="nav.toggleTheme">
         <svg data-theme-icon="moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"><path d="M20 14 A8 8 0 1 1 10 4 A6 6 0 0 0 20 14Z"/></svg>
         <svg data-theme-icon="sun" hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4" y1="12" x2="2" y2="12"/><line x1="22" y1="12" x2="20" y2="12"/><line x1="5" y1="5" x2="7" y2="7"/><line x1="17" y1="17" x2="19" y2="19"/><line x1="5" y1="19" x2="7" y2="17"/><line x1="17" y1="7" x2="19" y2="5"/></svg>
       </button>
@@ -39,8 +47,8 @@
   <main class="wl-qr-page">
     <div class="wl-card wl-qr-card">
       <div class="wl-card__header">
-        <span><span class="wl-dot wl-dot--live"></span>bridge · :13000/qrcode</span>
-        <span class="wl-badge wl-badge--warn" data-status="login-pill">waiting</span>
+        <span><span class="wl-dot wl-dot--live"></span><span data-i18n="qr.header">bridge · :13000/qrcode</span></span>
+        <span class="wl-badge wl-badge--warn" data-status="login-pill" data-i18n="qr.pill.waiting">等待扫码</span>
       </div>
       <div class="wl-qr-card__body">
         <div class="wl-qr-frame">
@@ -49,54 +57,33 @@
                style="width:220px;height:220px;image-rendering:pixelated;background:var(--wl-bg-2)">
           <div class="wl-qr-meta__hint" data-qr-empty hidden
                style="position:absolute;inset:20px;font-family:var(--wl-font-mono);font-size:13px;color:var(--wl-fg-3);text-align:center;width:220px;height:220px;display:flex;align-items:center;justify-content:center;background:var(--wl-bg-2);border:1px dashed var(--wl-rule-strong)">
-            no qr available yet<br><br>waiting for kernel
+            <span><span data-i18n="qr.empty">二维码尚未生成</span><br><br><span data-i18n="qr.empty.sub">等待内核</span></span>
           </div>
           <div class="wl-qr-frame__overlay wl-qr-frame__overlay--ok" data-qr-loggedin hidden>
             <span style="display:inline-flex;align-items:center;gap:6px">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="miter"><polyline points="20 6 9 17 4 12"/></svg>
-              <span data-qr-loggedin-label>logged in</span>
+              <span data-qr-loggedin-label data-i18n="qr.loggedin">已登录</span>
             </span>
           </div>
         </div>
         <div class="wl-qr-meta">
-          <div class="wl-qr-meta__primary">Scan with QQ Mobile</div>
-          <div class="wl-small wl-qr-meta__hint">Or set <code>AUTO_LOGIN_QQ</code> to skip the scan on restart.</div>
+          <div class="wl-qr-meta__primary" data-i18n="qr.scan">请使用 QQ 手机版扫码登录</div>
+          <div class="wl-small wl-qr-meta__hint" data-i18n-html="qr.hint">或设置 <code>AUTO_LOGIN_QQ</code> 环境变量，重启时跳过扫码。</div>
         </div>
         <div class="wl-qr-foot">
           <span class="wl-micro" data-qr-status>
-            <span class="wl-dot wl-dot--warn"></span>checking…
+            <span class="wl-dot wl-dot--warn"></span><span data-i18n="qr.status.checking">检查中…</span>
           </span>
-          <button class="wl-qr-foot__refresh" data-action="refresh-qr">refresh qr</button>
+          <button class="wl-qr-foot__refresh" data-action="refresh-qr" data-i18n="qr.refresh">刷新二维码</button>
         </div>
       </div>
     </div>
   </main>
 
   <footer class="wl-footer">
-    <span>waylay · login</span>
-    <span><a href="/qrcode.png">/qrcode.png</a> · <a href="/api/status">/api/status</a></span>
+    <span data-i18n="footer.brand.qr">waylay · 登录</span>
+    <span><a href="/qrcode.png" data-i18n="footer.png">/qrcode.png</a> · <a href="/api/status" data-i18n="footer.status">/api/status</a></span>
   </footer>
 </div>
-
-<script>
-  // Mirror status into the header pill once /api/status responds.
-  (function () {
-    function updatePill() {
-      fetch("/api/status").then(function (r) { return r.json(); }).then(function (s) {
-        var pill = document.querySelector("[data-status='login-pill']");
-        if (!pill) return;
-        if (s.logged_in) {
-          pill.className = "wl-badge wl-badge--ok";
-          pill.textContent = s.uin ? "logged in · " + s.uin : "logged in";
-        } else {
-          pill.className = "wl-badge wl-badge--warn";
-          pill.textContent = "waiting";
-        }
-      }).catch(function () {});
-    }
-    updatePill();
-    setInterval(updatePill, 3000);
-  })();
-</script>
 </body>
 </html>

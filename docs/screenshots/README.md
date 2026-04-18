@@ -2,33 +2,29 @@
 
 This folder is the visual reference for the bridge's built-in web console, served directly by `src/server.js` from the static files under `src/web/`. It implements the **Waylay design system** — terminal-inspired, monospace-forward, single warm-amber accent.
 
-The console runs on the Bridge port (default `13000`); start the container and open `http://localhost:13000/`.
+The console runs on the Bridge port (default `13000`, host `0.0.0.0`); start the container and open `http://<host>:13000/`. Long-form documentation (guides, protocol reference, action list, framework integration) lives in the external [waylay-docs](https://github.com/Micuks/waylay-docs) wiki — the console only renders status that is bound to the running instance.
+
+The UI is bilingual: default `zh`, toggle to `en` via the header `中`/`EN` button. Theme toggle (Parchment ⇄ Obsidian) sits next to it.
 
 ## Screens
 
-### Landing — Parchment (light)
+### Landing — Parchment (light, zh)
 
-`GET /` with `Accept: text/html` (any browser). The page mixes brand, live `/api/status` polling, an ASCII architecture diagram, and the latency comparison table.
+`GET /` with `Accept: text/html` (any browser). The page mixes brand, live `/api/status` polling, an ASCII architecture diagram, and the latency comparison table — every visible string is localized.
 
-![Landing · light](landing-light.png)
+![Landing · light · zh](landing-light.png)
 
-### Landing — Obsidian (dark)
+### Landing — Obsidian (dark, zh)
 
-The same page with `?theme=dark` (or after toggling the moon/sun icon in the top-right). Both themes share every component — only the palette tokens swap.
+Same page with `?theme=dark` (or after toggling the moon/sun icon). Both themes share every component — only the palette tokens swap.
 
-![Landing · dark](landing-dark.png)
+![Landing · dark · zh](landing-dark.png)
 
-### Docs — Quickstart
+### Landing — English
 
-`GET /docs#quickstart`. Three-column-ish layout collapses to a sticky left nav + content area. Each fenced block carries a `copy` button.
+`?lang=en` (or after clicking the `EN` button) flips every translatable string. Brand mark, env vars, and code samples stay constant.
 
-![Docs · Quickstart](docs-quickstart.png)
-
-### Docs — OneBot v11
-
-`GET /docs#onebot`. The OneBot v11 reference uses the same table treatment as the README (uppercased mono micro headers, hairline rules, no bold separators).
-
-![Docs · OneBot v11](docs-onebot.png)
+![Landing · light · en](landing-light-en.png)
 
 ### Login — waiting
 
@@ -83,4 +79,4 @@ google-chrome --headless=new --no-sandbox --hide-scrollbars \
   'http://localhost:13000/?theme=light'
 ```
 
-Repeat with `?theme=dark`, `/docs#quickstart`, `/docs#onebot`, `/qrcode?theme=light`. Window heights used in this folder: `1280×1900` (landing), `1280×1500` (docs), `1280×900` (QR).
+Repeat with `?theme=dark`, `?lang=en`, `/qrcode?theme=light`. Window sizes used in this folder: `1280×1900` (landing), `1280×900` (QR).
