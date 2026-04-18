@@ -131,7 +131,8 @@ class Bridge {
               }
               const buf = Buffer.from(b64, "base64");
               fs.writeFileSync("/tmp/qrcode.png", buf);
-              console.log(`[bridge] QR code saved (${buf.length} bytes). View at http://HOST:${this.config.port}/qrcode`);
+              const host = this.config.host === "0.0.0.0" || this.config.host === "::" ? "0.0.0.0" : this.config.host;
+              console.log(`[bridge] QR code saved (${buf.length} bytes). View at http://${host}:${this.config.port}/qrcode`);
             } else {
               console.log("[bridge] QR code event (no image data)");
             }

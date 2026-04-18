@@ -91,6 +91,13 @@ class BridgeServer {
     return new Promise((resolve, reject) => {
       this.httpServer.listen(this.port, this.host, () => {
         console.log(`[server] Listening on ${this.host}:${this.port}`);
+        const display = this.host === "0.0.0.0" || this.host === "::" ? "0.0.0.0" : this.host;
+        const base = `http://${display}:${this.port}`;
+        console.log(`[ui] Web console available on ${this.host} (all interfaces${this.host === "0.0.0.0" ? "" : " — set BRIDGE_HOST=0.0.0.0 to expose externally"}):`);
+        console.log(`[ui]   landing  → ${base}/`);
+        console.log(`[ui]   docs     → ${base}/docs`);
+        console.log(`[ui]   login QR → ${base}/qrcode`);
+        console.log(`[ui]   status   → ${base}/api/status`);
         resolve();
       });
       this.httpServer.on("error", reject);
