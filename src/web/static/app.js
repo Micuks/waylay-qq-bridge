@@ -222,18 +222,35 @@
     }
   }
 
+  function clearLoggedInOverlay() {
+    const overlay = document.querySelector("[data-qr-loggedin]");
+    if (overlay) overlay.hidden = true;
+    const pill = document.querySelector("[data-status='login-pill']");
+    if (pill) {
+      pill.className = "wl-badge wl-badge--warn";
+      pill.textContent = tr("qr.pill.waiting", "waiting");
+    }
+  }
+
   function pollLoginState() {
     fetch("/api/status", { headers: { Accept: "application/json" } })
       .then(function (r) { return r.json(); })
       .then(function (s) {
-        if (!s.logged_in) return;
-        qrLoggedIn = true;
-        setLoggedInOverlay(s.uin);
-        setStamp("ok", tr("qr.status.loggedin", "logged in") + (s.uin ? " · " + s.uin : ""));
-        const pill = document.querySelector("[data-status='login-pill']");
-        if (pill) {
-          pill.className = "wl-badge wl-badge--ok";
-          pill.textContent = tr("qr.pill.loggedin", "logged in") + (s.uin ? " · " + s.uin : "");
+        if (s.logged_in) {
+          qrLoggedIn = true;
+          setLoggedInOverlay(s.uin);
+          setStamp("ok", tr("qr.status.loggedin", "logged in") + (s.uin ? " · " + s.uin : ""));
+          const pill = document.querySelector("[data-status='login-pill']");
+          if (pill) {
+            pill.className = "wl-badge wl-badge--ok";
+            pill.textContent = tr("qr.pill.loggedin", "logged in") + (s.uin ? " · " + s.uin : "");
+          }
+        } else if (qrLoggedIn) {
+          // Session was kicked or otherwise ended — revert to the waiting UI
+          // and let refreshQR take over the stamp/image again.
+          qrLoggedIn = false;
+          clearLoggedInOverlay();
+          refreshQR();
         }
       })
       .catch(function () {});

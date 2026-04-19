@@ -53,6 +53,10 @@ class Bridge {
     const preview = dataStr && dataStr.length > maxLen ? dataStr.substring(0, maxLen) + "..." : dataStr;
     console.log(`[event] ${event.listenerName}/${event.eventName} ${preview}`);
 
+    if (event.eventName === "onKickedOffLine") {
+      this._handleKickedOffLine(event.data);
+    }
+
     if (this.server) {
       this.server.pushEvent(event.listenerName, event.eventName, event.data);
     }
@@ -62,6 +66,16 @@ class Bridge {
     if (this.milkyAdapter) {
       this.milkyAdapter.pushEvent(event.listenerName, event.eventName, event.data);
     }
+  }
+
+  _handleKickedOffLine(data) {
+    const title = data?.tipsTitle || "下线通知";
+    const desc  = data?.tipsDesc  || "";
+    console.warn(`[bridge] Kicked offline · ${title}${desc ? " · " + desc : ""}`);
+    // Flip login state so /api/status and the dashboard reflect reality.
+    this.selfInfo = { uin: "", uid: "", nickName: "" };
+    // Drop the stale QR on disk so /qrcode stops returning the old PNG.
+    try { fs.unlinkSync("/tmp/qrcode.png"); } catch (_) {}
   }
 
   // --- Initialization ---
