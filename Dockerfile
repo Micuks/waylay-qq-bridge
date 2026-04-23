@@ -1,38 +1,46 @@
-FROM debian:bookworm-slim
+# syntax=docker/dockerfile:1.7
+FROM node:24-trixie-slim
+
+ARG TARGETARCH
+ARG USER_NAME=node
+ARG QQ_VERSION=3.2.27_260401
+ARG APP_UID=1000
+ARG APP_GID=1000
 
 # Use TUNA mirror for faster apt downloads in China
-RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources
+# RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources
 
-# System dependencies for Electron/wrapper.node: Xvfb, dbus, libGL, X11 libs
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl xvfb dbus x11-utils \
-    libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
-    libdrm2 libgtk-3-0 libgbm1 libasound2 libxcomposite1 libxdamage1 \
-    libxfixes3 libxrandr2 libxkbcommon0 libpango-1.0-0 libcairo2 \
-    libxshmfence1 libx11-xcb1 libxcb-dri3-0 mesa-utils libgl1-mesa-glx \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install QQ Linux
-RUN curl -fsSL -o /tmp/qq.deb \
-    "https://dldir1v6.qq.com/qqfile/qq/QQNT/Linux/QQ_3.2.27_260401_amd64_01.deb" && \
-    dpkg -i /tmp/qq.deb || apt-get update && apt-get install -f -y && \
-    rm -f /tmp/qq.deb && rm -rf /var/lib/apt/lists/*
-
-# Install Node.js 22 and ffmpeg
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y --no-install-recommends nodejs ffmpeg && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    apt-get update && apt-get install -y --no-install-recommends \
+      curl ca-certificates && \
+    curl -fsSL -o /tmp/qq.deb "https://dldir1v6.qq.com/qqfile/qq/QQNT/Linux/QQ_${QQ_VERSION}_${TARGETARCH}_01.deb" && \
+    apt-get install -y --no-install-recommends \
+      xvfb dbus x11-utils \
+      libgbm1 libxshmfence1 ffmpeg \
+      /tmp/qq.deb && \
+    rm -f /tmp/qq.deb
 
 # Use npmmirror for faster npm downloads in China
-RUN npm config set registry https://registry.npmmirror.com
+# RUN npm config set registry https://registry.npmmirror.com
 
-# Copy bridge source
-WORKDIR /app/qq-bridge
-COPY package.json ./
-RUN npm install --production
-COPY src/ ./src/
+# Reuse the pre-existing `node` user/group from the base image (UID/GID 1000).
+# Override APP_UID/APP_GID/USER_NAME at build time only if you need to match
+# a different host UID or rename the runtime account; the user/group is then
+# modified in place.
+RUN set -e; \
+    if [ "${APP_GID}" != "1000" ]; then groupmod -g "${APP_GID}" node; fi; \
+    if [ "${APP_UID}" != "1000" ]; then usermod  -u "${APP_UID}" node; fi; \
+    if [ "${USER_NAME}" != "node" ]; then \
+        groupmod -n "${USER_NAME}" node; \
+        usermod  -l "${USER_NAME}" -d "/home/${USER_NAME}" -m node; \
+    fi; \
+    chown -R "${APP_UID}:${APP_GID}" "/home/${USER_NAME}"
 
-# Patch QQ's package.json to load our bridge entry instead of encrypted QQ app
+# Root-only build steps first, so we only need a single USER switch below.
+# Patch QQ's package.json to load our bridge entry; result is world-readable
+# so the non-root runtime user can still load it.
 COPY src/electron-entry.js /opt/QQ/resources/app/qq-bridge-entry.js
 RUN node -e " \
   const fs = require('fs'); \
@@ -41,9 +49,17 @@ RUN node -e " \
   pkg.main = './qq-bridge-entry.js'; \
   fs.writeFileSync('/opt/QQ/resources/app/package.json', JSON.stringify(pkg, null, 2)); \
 "
+COPY --chmod=755 startup.sh /startup.sh
 
-COPY startup.sh /startup.sh
-RUN chmod +x /startup.sh
+# Hand /app to the runtime user, then drop privileges for everything below.
+RUN install -d -o ${USER_NAME} -g ${USER_NAME} /app/qq-bridge
+WORKDIR /app/qq-bridge
+USER ${APP_UID}:${APP_GID}
+
+COPY --chown=${APP_UID}:${APP_GID} package.json package-lock.json ./
+RUN --mount=type=cache,target=/home/${USER_NAME}/.npm,uid=${APP_UID},gid=${APP_GID} \
+    npm ci --omit=dev
+COPY --chown=${APP_UID}:${APP_GID} src/ ./src/
 
 EXPOSE 13000
 

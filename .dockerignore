@@ -1,0 +1,9 @@
+# Default-deny: only whitelist what the Dockerfile actually copies.
+*
+
+!Dockerfile
+!startup.sh
+!package.json
+!package-lock.json
+!src/
+!*.deb

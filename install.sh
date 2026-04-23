@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
-# Waylay — One-click installer for bare-metal Linux (amd64)
+# Waylay — One-click installer for bare-metal Linux (amd64 / arm64)
 # Usage: curl -fsSL https://raw.githubusercontent.com/Micuks/waylay-qq-bridge/master/install.sh | bash
 
 WAYLAY_DIR="${WAYLAY_DIR:-/opt/waylay}"
-QQ_DEB_URL="https://dldir1v6.qq.com/qqfile/qq/QQNT/Linux/QQ_3.2.27_260401_amd64_01.deb"
-NODE_MAJOR=22
+NODE_MAJOR=24
+QQ_VERSION="${QQ_VERSION:-3.2.27_260401}"
 
 echo "=============================="
 echo "  Waylay Installer"
@@ -16,11 +16,17 @@ echo "Install directory: $WAYLAY_DIR"
 echo ""
 
 # --- Check architecture ---
-ARCH=$(uname -m)
-if [ "$ARCH" != "x86_64" ]; then
-  echo "Error: Only x86_64 (amd64) is supported. Detected: $ARCH"
-  exit 1
-fi
+# Map uname -m to the Debian arch name used in QQ's .deb filename.
+UNAME_ARCH=$(uname -m)
+case "$UNAME_ARCH" in
+  x86_64)  DEB_ARCH=amd64 ;;
+  aarch64|arm64) DEB_ARCH=arm64 ;;
+  *)
+    echo "Error: Unsupported architecture: $UNAME_ARCH (need x86_64 or aarch64)"
+    exit 1
+    ;;
+esac
+QQ_DEB_URL="https://dldir1v6.qq.com/qqfile/qq/QQNT/Linux/QQ_${QQ_VERSION}_${DEB_ARCH}_01.deb"
 
 # --- Check root ---
 if [ "$(id -u)" -ne 0 ]; then
@@ -37,7 +43,7 @@ apt-get install -y -qq --no-install-recommends \
   libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
   libdrm2 libgtk-3-0 libgbm1 libasound2 libxcomposite1 libxdamage1 \
   libxfixes3 libxrandr2 libxkbcommon0 libpango-1.0-0 libcairo2 \
-  libxshmfence1 libx11-xcb1 libxcb-dri3-0 mesa-utils libgl1-mesa-glx \
+  libxshmfence1 libx11-xcb1 libxcb-dri3-0 mesa-utils \
   > /dev/null 2>&1
 echo "    Done."
 
@@ -62,9 +68,10 @@ fi
 
 # --- Install QQ Linux ---
 if [ ! -f /opt/QQ/qq ]; then
-  echo "[4/6] Installing QQ Linux..."
+  echo "[4/6] Installing QQ Linux (${DEB_ARCH})..."
   curl -fsSL -o /tmp/qq.deb "$QQ_DEB_URL"
-  dpkg -i /tmp/qq.deb > /dev/null 2>&1 || apt-get install -f -y -qq > /dev/null 2>&1
+  # apt-get resolves the .deb's own deps (xdg-utils, libsecret-1-0, ...) up front.
+  apt-get install -y -qq --no-install-recommends /tmp/qq.deb > /dev/null 2>&1
   rm -f /tmp/qq.deb
   echo "    QQ installed at /opt/QQ/"
 else

@@ -172,13 +172,44 @@ class Bridge {
     this.loginService.connect();
     console.log("[bridge] Login service connected, waiting for login...");
 
-    if (this.config.quickLoginQQ) {
-      setTimeout(() => this._quickLogin(this.config.quickLoginQQ), 1000);
-    } else {
-      setTimeout(() => {
+    setTimeout(async () => {
+      let uin = this.config.quickLoginQQ;
+      if (!uin) {
+        uin = await this._pickLastLoggedInUin();
+      }
+      if (uin) {
+        this._quickLogin(uin);
+      } else {
         console.log("[bridge] Requesting QR code for login...");
         this.loginService.getQRCodePicture();
-      }, 1000);
+      }
+    }, 1000);
+  }
+
+  async _pickLastLoggedInUin() {
+    try {
+      const r = await this.loginService.getLoginList();
+      if (r.result !== 0) {
+        console.warn("[bridge] getLoginList failed:", r);
+        return null;
+      }
+      // NTQQ's field name varies across versions; probe the common ones.
+      const list = r.LocalLoginInfoList || r.localLoginInfoList || r.loginInfoList || [];
+      if (!list.length) {
+        console.log("[bridge] No previous login record; falling back to QR code");
+        return null;
+      }
+      const first = list[0];
+      const uin = String(first?.uin || first?.Uin || first?.uinString || "");
+      if (!uin) {
+        console.warn("[bridge] Could not extract uin from login list entry:", JSON.stringify(first));
+        return null;
+      }
+      console.log(`[bridge] Auto-login using previously logged-in account ${uin}`);
+      return uin;
+    } catch (e) {
+      console.error("[bridge] getLoginList error:", e);
+      return null;
     }
   }
 
