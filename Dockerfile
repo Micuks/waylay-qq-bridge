@@ -15,7 +15,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean && \
     apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates && \
-    curl -fsSL -o /tmp/qq.deb "https://dldir1v6.qq.com/qqfile/qq/QQNT/Linux/QQ_${QQ_VERSION}_${TARGETARCH}_01.deb" && \
+    deb_arch="${TARGETARCH:-$(dpkg --print-architecture)}" && \
+    case "$deb_arch" in amd64|arm64) ;; *) echo "Unsupported architecture: $deb_arch" >&2; exit 1 ;; esac && \
+    curl -fsSL -o /tmp/qq.deb "https://dldir1v6.qq.com/qqfile/qq/QQNT/Linux/QQ_${QQ_VERSION}_${deb_arch}_01.deb" && \
     apt-get install -y --no-install-recommends \
       xvfb dbus x11-utils \
       libgbm1 libxshmfence1 ffmpeg \
