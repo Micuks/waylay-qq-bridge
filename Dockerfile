@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 FROM node:24-trixie-slim
 
-ARG TARGETARCH
+ARG TARGETARCH=amd64
 ARG USER_NAME=node
 ARG QQ_VERSION=3.2.27_260401
 ARG APP_UID=1000
