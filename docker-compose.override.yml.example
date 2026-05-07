@@ -1,0 +1,30 @@
+# Local-only compose override. Copy to `docker-compose.override.yml` and edit.
+# Auto-merged on top of docker-compose.yml by `docker compose up`.
+# Both `.env` and this file are gitignored.
+
+services:
+  waylay:
+    # Use a separate tag so the locally-built image doesn't shadow the
+    # published `micuks/waylay:latest` registry tag. Without this, compose
+    # may silently keep using the pulled published image.
+    image: waylay-local:latest
+
+    build:
+      context: .
+      # Uncomment if your global Docker proxy (in ~/.docker/config.json)
+      # breaks builds (e.g. apt 502 errors). Empty values clear the
+      # auto-injected proxy build-args; harmless if you have no proxy.
+      # args:
+      #   http_proxy: ""
+      #   https_proxy: ""
+      #   HTTP_PROXY: ""
+      #   HTTPS_PROXY: ""
+
+    # Loads AUTO_LOGIN_QQ / ONEBOT_WS_REVERSE_URLS from .env into the container.
+    env_file:
+      - .env
+
+    # Bind-mount host bot-framework data so file:// paths in incoming messages
+    # resolve to the same path inside the container. Remove if unused.
+    volumes:
+      - ${YUNZAI_DATA_PATH}:${YUNZAI_DATA_PATH}:ro

@@ -148,3 +148,7 @@ introspect.js
 docs-internal/
 *.deb
 /qq_data/
+
+# Local-only compose overrides (templates committed as *.example)
+.env
+docker-compose.override.yml
