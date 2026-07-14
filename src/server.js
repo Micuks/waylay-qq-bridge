@@ -289,6 +289,8 @@ class BridgeServer {
     const data = {
       status: "ok",
       version: SERVER_VERSION,
+      qq_version: (bridge.packageJSON && bridge.packageJSON.version) || "",
+      qq_profile: bridge.profile ? bridge.profile.label + " (" + bridge.profile.resolvedBy + ")" : "",
       uptime_sec: Math.floor((Date.now() - SERVER_START_MS) / 1000),
       logged_in: Boolean(selfInfo.uin),
       uin: selfInfo.uin || "",

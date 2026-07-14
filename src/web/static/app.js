@@ -128,6 +128,7 @@
       .then(function (r) { return r.json(); })
       .then(function (s) {
         setRow("version", s.version || "—");
+        setRow("qq_version", s.qq_version ? "QQ " + s.qq_version.split(/[-_]/)[0] : "QQ");
         setRow("uptime", fmtUptime(s.uptime_sec));
         setRow("login", loginText(s), s.logged_in ? "ok" : "warn");
         setRow("ws_clients", String(s.bridge_ws_clients ?? 0));
