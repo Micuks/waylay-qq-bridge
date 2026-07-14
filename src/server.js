@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const { WebSocketServer, WebSocket } = require("ws");
 const { randomUUID } = require("crypto");
+const { VERSION } = require("./version");
 
 const WEB_ROOT = path.join(__dirname, "web");
 const STATIC_MIME = {
@@ -19,7 +20,7 @@ const STATIC_MIME = {
   ".woff2":"font/woff2",
 };
 
-const SERVER_VERSION = "qq-bridge/0.4.2";
+const SERVER_VERSION = "qq-bridge/" + VERSION;
 const SERVER_START_MS = Date.now();
 
 function wantsHtml(req) {

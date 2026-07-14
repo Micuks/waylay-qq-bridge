@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { milkyToNt } = require("./message");
+const { VERSION } = require("../version");
 
 const handlers = {};
 
@@ -18,7 +19,7 @@ handlers.get_login_info = async (params, bridge) => {
 handlers.get_impl_info = async () => {
   return {
     name: "waylay",
-    version: "0.2.0",
+    version: VERSION,
     onebot_version: "",
     milky_version: "1",
   };

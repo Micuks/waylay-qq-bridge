@@ -7,6 +7,7 @@ const path = require("path");
 const { handlers } = require("./actions");
 const { EventTranslator } = require("./events");
 const { setFileProxyBase, getImageFilePath } = require("./message");
+const { VERSION } = require("../version");
 
 /**
  * OneBot v11 adapter.
@@ -66,7 +67,7 @@ class OneBotAdapter {
         return this._serveFile(req, res);
       }
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ status: "ok", version: "waylay/0.2.0" }));
+      res.end(JSON.stringify({ status: "ok", version: "waylay/" + VERSION }));
     });
 
     this.wss = new WebSocketServer({ server: this.httpServer });

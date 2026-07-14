@@ -4,6 +4,7 @@ const { Bridge } = require("./bridge");
 const { BridgeServer } = require("./server");
 const { OneBotAdapter } = require("./onebot/adapter");
 const { MilkyAdapter } = require("./milky/adapter");
+const { VERSION } = require("./version");
 
 // --- Parse CLI arguments and environment ---
 
@@ -62,7 +63,7 @@ module.exports = { parseConfig };
 async function main() {
   const config = parseConfig();
 
-  console.log("=== waylay v0.2.0 ===");
+  console.log(`=== waylay v${VERSION} ===`);
   console.log(`[main] Config:`, JSON.stringify(config, null, 2));
 
   const bridge = new Bridge(config);
