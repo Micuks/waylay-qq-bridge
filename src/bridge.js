@@ -4,6 +4,7 @@ const path = require("path");
 const os = require("os");
 const fs = require("fs");
 const { createListener } = require("./listener");
+const { resolveProfile } = require("./qq-profiles");
 
 const CMD_TRACE_TAG = "___";
 
@@ -90,6 +91,11 @@ class Bridge {
   async _initStandaloneMode() {
     console.log("[bridge] Loading wrapper.node...");
     this.wrapper = require(path.join(this.appDir, "wrapper.node"));
+
+    this.profile = resolveProfile(this.packageJSON.version, this.wrapper);
+    console.log(
+      `[bridge] profile: ${this.profile.label} (${this.profile.resolvedBy}) | session: ${this.profile.session.mode}`
+    );
 
     console.log("[bridge] Initializing engine...");
     const engine = this.wrapper.NodeIQQNTWrapperEngine.get();
@@ -193,14 +199,14 @@ class Bridge {
         console.warn("[bridge] getLoginList failed:", r);
         return null;
       }
-      // NTQQ's field name varies across versions; probe the common ones.
-      const list = r.LocalLoginInfoList || r.localLoginInfoList || r.loginInfoList || [];
+      // Field-name candidates come from the resolved profile.
+      const list = firstPresent(r, this.profile.loginListFields) || [];
       if (!list.length) {
         console.log("[bridge] No previous login record; falling back to QR code");
         return null;
       }
       const first = list[0];
-      const uin = String(first?.uin || first?.Uin || first?.uinString || "");
+      const uin = String(firstPresent(first, this.profile.uinFields) || "");
       if (!uin) {
         console.warn("[bridge] Could not extract uin from login list entry:", JSON.stringify(first));
         return null;
@@ -219,11 +225,11 @@ class Bridge {
     console.log("[bridge] Creating session...");
     const SessionClass = this.wrapper.NodeIQQNTWrapperSession;
 
-    // QQ >=3.2.27: create startup session first, then get the wrapper session
-    const StartupSession = this.wrapper.NodeIQQNTStartupSessionWrapper;
-    if (StartupSession && typeof StartupSession.create === "function") {
+    // Session-creation flow varies by QQ version; resolved into this.profile.
+    if (this.profile.session.mode === "startup-session") {
+      const StartupSession = this.wrapper.NodeIQQNTStartupSessionWrapper;
       this.startupSession = StartupSession.create();
-      this.session = SessionClass.getNTWrapperSession("nt_1");
+      this.session = SessionClass.getNTWrapperSession(this.profile.session.wrapperName || "nt_1");
     } else if (typeof SessionClass.create === "function") {
       this.session = SessionClass.create();
     } else {
@@ -569,7 +575,7 @@ class Bridge {
     try {
       const majorPath = path.join(this.appDir, "major.node");
       const majorContent = fs.readFileSync(majorPath);
-      const match = majorContent.toString("latin1").match(/QQAppId\/(\d+)/);
+      const match = majorContent.toString("latin1").match(new RegExp(this.profile.appid.regex));
       if (match) appid = match[1];
     } catch {}
 
@@ -588,6 +594,15 @@ class Bridge {
 
     return appid || this.packageJSON.appid?.linux || "";
   }
+}
+
+/** 返回 obj 上 keys 里第一个真值属性，语义等同 obj[a] || obj[b] || ...。 */
+function firstPresent(obj, keys) {
+  if (!obj) return undefined;
+  for (const k of keys) {
+    if (obj[k]) return obj[k];
+  }
+  return undefined;
 }
 
 function genUUID() {
