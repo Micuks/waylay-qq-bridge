@@ -6,7 +6,7 @@ set -e
 
 WAYLAY_DIR="${WAYLAY_DIR:-/opt/waylay}"
 NODE_MAJOR=24
-QQ_VERSION="${QQ_VERSION:-3.2.31_51102}"
+QQ_VERSION="${QQ_VERSION:-3.2.31-51102}"
 
 echo "=============================="
 echo "  Waylay Installer"
@@ -26,7 +26,13 @@ case "$UNAME_ARCH" in
     exit 1
     ;;
 esac
-QQ_DEB_URL="https://dldir1v6.qq.com/qqfile/qq/QQNT/Linux/QQ_${QQ_VERSION}_${DEB_ARCH}_01.deb"
+# QQ NT Linux package. 3.2.31 ships on qqdl.gtimg.cn under a per-release,
+# hash-prefixed beta path (see AUR `linuxqq`); the old dldir1v6 `/Linux/*_01.deb`
+# scheme 404s for it. Override QQ_PKG_PREFIX/QQ_VERSION — or QQ_DEB_URL directly.
+QQ_PKG_PREFIX="${QQ_PKG_PREFIX:-https://qqdl.gtimg.cn/qqfile/QQNT/9.9.32/beta/c390e792}"
+QQ_DEB_URL="${QQ_DEB_URL:-${QQ_PKG_PREFIX}/linuxqq_${QQ_VERSION}_${DEB_ARCH}.deb}"
+# Fallback: legacy dldir1v6 date-scheme (underscore build form); override as needed.
+QQ_DEB_URL_FALLBACK="${QQ_DEB_URL_FALLBACK:-https://dldir1v6.qq.com/qqfile/qq/QQNT/Linux/QQ_${QQ_VERSION//-/_}_${DEB_ARCH}_01.deb}"
 
 # --- Check root ---
 if [ "$(id -u)" -ne 0 ]; then
@@ -69,7 +75,10 @@ fi
 # --- Install QQ Linux ---
 if [ ! -f /opt/QQ/qq ]; then
   echo "[4/6] Installing QQ Linux (${DEB_ARCH})..."
-  curl -fsSL -o /tmp/qq.deb "$QQ_DEB_URL"
+  if ! curl -fsSL -o /tmp/qq.deb "$QQ_DEB_URL"; then
+    echo "    primary download failed, trying fallback: $QQ_DEB_URL_FALLBACK"
+    curl -fsSL -o /tmp/qq.deb "$QQ_DEB_URL_FALLBACK"
+  fi
   # apt-get resolves the .deb's own deps (xdg-utils, libsecret-1-0, ...) up front.
   apt-get install -y -qq --no-install-recommends /tmp/qq.deb > /dev/null 2>&1
   rm -f /tmp/qq.deb
