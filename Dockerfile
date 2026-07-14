@@ -3,7 +3,11 @@ FROM node:24-trixie-slim
 
 ARG TARGETARCH
 ARG USER_NAME=node
-ARG QQ_VERSION=3.2.31_51102
+# QQ NT Linux package. 3.2.31 ships on qqdl.gtimg.cn under a per-release,
+# hash-prefixed beta path (see AUR `linuxqq`); the old dldir1v6 `/Linux/*_01.deb`
+# scheme 404s for it. Override QQ_PKG_PREFIX + QQ_VERSION together to move versions.
+ARG QQ_VERSION=3.2.31-51102
+ARG QQ_PKG_PREFIX=https://qqdl.gtimg.cn/qqfile/QQNT/9.9.32/beta/c390e792
 ARG APP_UID=1000
 ARG APP_GID=1000
 
@@ -17,7 +21,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       curl ca-certificates && \
     deb_arch="${TARGETARCH:-$(dpkg --print-architecture)}" && \
     case "$deb_arch" in amd64|arm64) ;; *) echo "Unsupported architecture: $deb_arch" >&2; exit 1 ;; esac && \
-    curl -fsSL -o /tmp/qq.deb "https://dldir1v6.qq.com/qqfile/qq/QQNT/Linux/QQ_${QQ_VERSION}_${deb_arch}_01.deb" && \
+    curl -fsSL -o /tmp/qq.deb "${QQ_PKG_PREFIX}/linuxqq_${QQ_VERSION}_${deb_arch}.deb" && \
     apt-get install -y --no-install-recommends \
       xvfb dbus x11-utils \
       libgbm1 libxshmfence1 ffmpeg \
