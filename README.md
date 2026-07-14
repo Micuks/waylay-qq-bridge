@@ -8,7 +8,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-≥18-green.svg)](https://nodejs.org/)
-[![QQ Version](https://img.shields.io/badge/QQ-3.2.27-blue.svg)](https://im.qq.com/linuxqq/index.shtml)
+[![QQ Version](https://img.shields.io/badge/QQ-3.2.31-blue.svg)](https://im.qq.com/linuxqq/index.shtml)
 [![OneBot v11](https://img.shields.io/badge/OneBot-v11-black.svg)](https://github.com/botuniverse/onebot-11)
 [![Milky](https://img.shields.io/badge/Milky-v1-purple.svg)](#milky-协议支持)
 [![Dependencies](https://img.shields.io/badge/依赖-1_(ws)-brightgreen.svg)](#项目特点)

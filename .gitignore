@@ -152,3 +152,6 @@ docs-internal/
 # Local-only compose overrides (templates committed as *.example)
 .env
 docker-compose.override.yml
+
+# Superpowers brainstorming/spec docs — kept local, not committed
+docs/superpowers/

@@ -6,7 +6,7 @@ set -e
 
 WAYLAY_DIR="${WAYLAY_DIR:-/opt/waylay}"
 NODE_MAJOR=24
-QQ_VERSION="${QQ_VERSION:-3.2.27_260401}"
+QQ_VERSION="${QQ_VERSION:-3.2.31_51102}"
 
 echo "=============================="
 echo "  Waylay Installer"

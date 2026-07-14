@@ -2,7 +2,21 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 规范，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [未发布] / v0.4.1 - 2026-04-15
+## [0.4.2] - 2026-07-14
+
+### 新增
+
+- 版本自适应 profile 注册表（`src/qq-profiles.js`）：启动时识别 QQ 版本并加载匹配
+  配置，未识别的更新版本走运行时能力探测 + fallback。
+
+### 变更
+
+- 出厂 pin 的 QQ 版本升级至 3.2.31_51102（原 3.2.27_260401）。
+- `bridge.js` 的 session 创建 / 登录列表字段 / appid 正则改由 profile 驱动。
+
+---
+
+## [0.4.1] - 2026-04-15
 
 ### 新增
 

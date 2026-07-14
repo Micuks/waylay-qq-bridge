@@ -19,7 +19,7 @@ const STATIC_MIME = {
   ".woff2":"font/woff2",
 };
 
-const SERVER_VERSION = "qq-bridge/0.4.1";
+const SERVER_VERSION = "qq-bridge/0.4.2";
 const SERVER_START_MS = Date.now();
 
 function wantsHtml(req) {
