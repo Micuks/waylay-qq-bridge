@@ -165,9 +165,11 @@ environment:
 
 | 版本 | 平台 | 状态 |
 |------|------|------|
-| QQ 3.2.27 (Linux amd64) | Docker / Linux | 已验证 |
+| QQ 3.2.31 (Linux amd64) | Docker / Linux | 已验证 |
 
-> Waylay 加载 NTQQ 的 `wrapper.node`，理论上支持所有包含该模块的 QQ Linux 版本。
+> Waylay 启动时识别 QQ 版本并加载匹配的适配 profile（`src/qq-profiles.js`）：`≥3.2.27`
+> 已内置支持，更新的版本会自动探测适配。底层加载 NTQQ 的 `wrapper.node`，理论上支持所有
+> 包含该模块的 QQ Linux 版本。
 
 ## 同类项目对比
 

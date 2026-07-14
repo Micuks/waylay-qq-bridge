@@ -161,9 +161,11 @@ environment:
 
 | Version | Platform | Status |
 |---------|----------|--------|
-| QQ 3.2.27 (Linux amd64) | Docker / Linux | Verified |
+| QQ 3.2.31 (Linux amd64) | Docker / Linux | Verified |
 
-> Waylay loads NTQQ's `wrapper.node` and should work with any QQ Linux version that includes this module.
+> Waylay detects the installed QQ version on startup and loads a matching adaptation profile
+> (`src/qq-profiles.js`): `>=3.2.27` is built in, and newer versions are auto-probed. It loads
+> NTQQ's `wrapper.node` and should work with any QQ Linux version that includes this module.
 
 ## Comparison
 
