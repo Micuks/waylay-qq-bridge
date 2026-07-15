@@ -226,6 +226,16 @@ class BridgeServer {
       return this._handleStatus(req, res);
     }
 
+    // Actively (re)generate a login QR — backs the console's refresh button so
+    // it produces a fresh code instead of re-reading a deleted /tmp/qrcode.png.
+    if (urlPath === "/api/refresh-qr") {
+      const ok = this.bridge && typeof this.bridge.requestQRCode === "function"
+        ? this.bridge.requestQRCode()
+        : false;
+      res.writeHead(ok ? 200 : 503, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      return res.end(JSON.stringify({ ok }));
+    }
+
     // QR code: PNG by default, HTML shell when a browser asks for it
     if (urlPath === "/qrcode" || urlPath === "/qr") {
       if (wantsHtml(req)) {

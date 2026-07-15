@@ -2,6 +2,16 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 规范，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布]
+
+### 修复
+
+- 被踢下线（`onKickedOffLine`）后无法恢复：现在会自动尝试重新登录（有 `AUTO_LOGIN_QQ`
+  或历史登录记录则快速登录，否则生成新二维码），带 60s 冷却避免与其它端登录互顶。可用
+  `AUTO_RELOGIN=false` 关闭。
+- Web 控制台"刷新二维码"现在真正生成新码：新增 `GET /api/refresh-qr` 端点触发
+  `getQRCodePicture()`，不再只是重读可能已被删除的静态文件。
+
 ## [0.4.2] - 2026-07-14
 
 ### 新增

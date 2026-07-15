@@ -13,6 +13,9 @@ function parseConfig() {
     port: parseInt(process.env.BRIDGE_PORT || "13000"),
     host: process.env.BRIDGE_HOST || "0.0.0.0",
     quickLoginQQ: process.env.AUTO_LOGIN_QQ || "",
+    // Auto re-login after being kicked offline (default on; set AUTO_RELOGIN=false to disable,
+    // e.g. if it causes a tug-of-war with another PC-slot login).
+    autoRelogin: process.env.AUTO_RELOGIN !== "false",
     qqResourceAppDir: process.env.QQ_APP_DIR || "/opt/QQ/resources/app",
 
     // OneBot v11 config

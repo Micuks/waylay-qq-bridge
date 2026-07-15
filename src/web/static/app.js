@@ -264,7 +264,13 @@
     setInterval(refreshQR, 5000);
     setInterval(pollLoginState, 3000);
     document.querySelectorAll("[data-action='refresh-qr']").forEach(function (b) {
-      b.addEventListener("click", function (e) { e.preventDefault(); refreshQR(); });
+      b.addEventListener("click", function (e) {
+        e.preventDefault();
+        // Ask the bridge to generate a new QR, then re-fetch it once it's written.
+        fetch("/api/refresh-qr", { headers: { Accept: "application/json" } })
+          .catch(function () {})
+          .then(function () { setTimeout(refreshQR, 800); });
+      });
     });
   }
 

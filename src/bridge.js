@@ -77,6 +77,25 @@ class Bridge {
     this.selfInfo = { uin: "", uid: "", nickName: "" };
     // Drop the stale QR on disk so /qrcode stops returning the old PNG.
     try { fs.unlinkSync("/tmp/qrcode.png"); } catch (_) {}
+
+    // Recover: without this, a kick leaves the bridge offline forever (no new
+    // QR, no auto-login) until the process is restarted.
+    if (this.config.autoRelogin === false) {
+      console.log("[bridge] Auto-relogin disabled; open /qrcode to log in again.");
+      return;
+    }
+    const now = Date.now();
+    const sinceLast = now - (this._lastReloginAt || 0);
+    const COOLDOWN_MS = 60000;
+    if (sinceLast < COOLDOWN_MS) {
+      // Repeated kicks in quick succession usually mean a genuine conflict with
+      // another PC-slot login — don't hammer it into a tug-of-war.
+      console.warn(`[bridge] Kicked again ${Math.round(sinceLast / 1000)}s after last relogin; backing off. Open /qrcode to log in manually.`);
+      return;
+    }
+    this._lastReloginAt = now;
+    console.log("[bridge] Attempting auto-relogin in 5s...");
+    setTimeout(() => this._attemptLogin("Auto-relogin after kick"), 5000);
   }
 
   // --- Initialization ---
@@ -178,18 +197,26 @@ class Bridge {
     this.loginService.connect();
     console.log("[bridge] Login service connected, waiting for login...");
 
-    setTimeout(async () => {
-      let uin = this.config.quickLoginQQ;
-      if (!uin) {
-        uin = await this._pickLastLoggedInUin();
-      }
-      if (uin) {
-        this._quickLogin(uin);
-      } else {
-        console.log("[bridge] Requesting QR code for login...");
-        this.loginService.getQRCodePicture();
-      }
-    }, 1000);
+    setTimeout(() => this._attemptLogin("Initial login"), 1000);
+  }
+
+  /**
+   * Trigger a login attempt: quick-login if we know a uin (configured or a
+   * previous record), otherwise request a QR code. Shared by initial startup
+   * and post-kick recovery.
+   */
+  async _attemptLogin(reason) {
+    let uin = this.config.quickLoginQQ;
+    if (!uin) {
+      uin = await this._pickLastLoggedInUin();
+    }
+    if (uin) {
+      console.log(`[bridge] ${reason} — quick-login as ${uin}`);
+      this._quickLogin(uin);
+    } else {
+      console.log(`[bridge] ${reason} — requesting QR code`);
+      this.loginService.getQRCodePicture();
+    }
   }
 
   async _pickLastLoggedInUin() {
@@ -534,6 +561,22 @@ class Bridge {
         });
       }, 1000);
     });
+  }
+
+  /**
+   * Actively request a fresh login QR code. Used by the web console's
+   * "refresh QR" button so it produces a new code instead of re-reading a
+   * (possibly deleted) file on disk. Returns whether the request was issued.
+   */
+  requestQRCode() {
+    if (!this.loginService) return false;
+    try {
+      this.loginService.getQRCodePicture();
+      return true;
+    } catch (e) {
+      console.error("[bridge] requestQRCode failed:", e);
+      return false;
+    }
   }
 
   // --- Helpers ---
